@@ -31,7 +31,8 @@ public class UserService {
             throw new RuntimeException("Email đã được sử dụng: " + email);
         }
         User user = new User();
-        user.setName(body.get("name"));
+        String fullName = body.getOrDefault("full_name", body.getOrDefault("name", ""));
+        user.setName(fullName);
         String requestedUsername = body.getOrDefault("username", "").trim();
         String baseUsername = requestedUsername.isBlank() ? buildUsernameFromEmail(email) : sanitizeUsername(requestedUsername);
         String uniqueUsername = ensureUniqueUsername(baseUsername);
@@ -40,7 +41,7 @@ public class UserService {
         user.setPassword(body.get("password")); // production: hash password
         user.setPhone(body.getOrDefault("phone", ""));
         user.setTotalSpent(0);
-        user.setMemberRank("normal");
+        user.setMemberRank("user");
         user.setCreatedAt(LocalDateTime.now().toString());
         return userRepository.save(user);
     }
@@ -49,7 +50,7 @@ public class UserService {
         String email = body.get("email");
         String password = body.get("password");
         User user = userRepository.findByEmail(email);
-        if (user == null || !user.getPassword().equals(password)) {
+        if (user == null || user.getPassword() == null || !user.getPassword().equals(password)) {
             throw new RuntimeException("Email hoặc mật khẩu không đúng");
         }
         user.setPassword(null); // không trả password về client
@@ -82,6 +83,7 @@ public class UserService {
     public void updateMemberRankTrigger(String userId) {
         User user = userRepository.findByKey(userId);
         if (user == null) return;
+        if ("admin".equalsIgnoreCase(user.getMemberRank())) return;
 
         String newRank = userRepository.calculateRankByStoredProcedure(user.getTotalSpent());
         if (!newRank.equals(user.getMemberRank())) {

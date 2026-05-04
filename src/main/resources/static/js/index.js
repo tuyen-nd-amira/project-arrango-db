@@ -29,13 +29,12 @@ function movieCardHTML(m) {
   return `
     <div class="col-6 col-md-4 col-lg-2">
       <div class="movie-card h-100">
-        <img src="${m.imageUrl || 'https://picsum.photos/300/450'}" alt="${m.title}" loading="lazy"
+        <img src="${m.poster_url || m.imageUrl || 'https://picsum.photos/300/450'}" alt="${m.title}" loading="lazy"
              onerror="this.src='https://picsum.photos/seed/${m._key}/300/450'">
         <div class="movie-card-body">
           <div class="movie-title" title="${m.title}">${m.title}</div>
-          <div class="d-flex justify-content-between align-items-center mt-2 mb-3">
-            <span class="badge-genre">${m.genre}</span>
-            <span class="rating">★ ${m.rating}</span>
+          <div class="text-muted mt-2 mb-3" style="font-size:0.82rem">
+            ⏱ ${formatDuration(m.duration)}
           </div>
           <a href="/booking.html?movieId=${m._key}" class="btn-primary-custom w-100 text-center" style="font-size:0.85rem;padding:8px">Đặt vé</a>
         </div>

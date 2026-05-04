@@ -32,7 +32,8 @@ public class AiReviewController {
                     "movieTitle", movie.getTitle(),
                     "review", result.getOrDefault("review", "Không có review"),
                     "source", result.getOrDefault("source", "fallback"),
-                    "model", result.getOrDefault("model", "unknown")
+                    "model", result.getOrDefault("model", "unknown"),
+                    "note", result.getOrDefault("note", "")
             ));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));

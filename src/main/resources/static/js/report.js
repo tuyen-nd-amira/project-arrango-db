@@ -64,7 +64,6 @@ function renderTable(reports) {
         <td>
           <div class="fw-semibold" style="max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
                title="${escHtml(r.movieTitle)}">${escHtml(r.movieTitle || '–')}</div>
-          <div class="text-muted" style="font-size:0.78rem">${escHtml(r.genre || '')}</div>
         </td>
         <td>
           <div class="fw-bold" style="color:${hasData ? 'var(--primary)' : '#aaa'}">${formatVND(r.totalRevenue || 0)}</div>
@@ -131,10 +130,7 @@ function changeSort(field) {
 function applySearch(reports) {
   const q = document.getElementById('search-report')?.value?.toLowerCase().trim() || '';
   if (!q) return reports;
-  return reports.filter(r =>
-    (r.movieTitle || '').toLowerCase().includes(q) ||
-    (r.genre || '').toLowerCase().includes(q)
-  );
+  return reports.filter(r => (r.movieTitle || '').toLowerCase().includes(q));
 }
 
 function escHtml(str) {

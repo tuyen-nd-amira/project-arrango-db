@@ -21,6 +21,10 @@ public class Movie {
     private String description;
     private String genre;
     private int duration;        // phút
+
+    @JsonProperty("poster_url")
+    private String posterUrl;
+
     private String imageUrl;
     private double basePrice;    // VND
     private String releaseDate;
@@ -28,4 +32,11 @@ public class Movie {
     private String cast;
     private double rating;
     private String status;      // "active" | "inactive"
+
+    public String getImageUrl() {
+        if (imageUrl != null && !imageUrl.isBlank()) {
+            return imageUrl;
+        }
+        return posterUrl;
+    }
 }

@@ -82,7 +82,7 @@
   <div id="footer-placeholder"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="/js/api.js?v=20260504-jwt-fix"></script>
+  <script src="/js/api.js?v=20260505-profile-fix"></script>
   <script>
     document.getElementById('navbar-placeholder').innerHTML = getNavbarHTML('');
     document.getElementById('footer-placeholder').innerHTML = getFooterHTML();
@@ -105,9 +105,10 @@
       }
 
       try {
+        const cachedUser = getCurrentUser();
         const freshUser = await api.getUser(authUserId);
-        setCurrentUser(freshUser);
-        showLoggedIn(freshUser);
+        setCurrentUser({ ...(cachedUser || {}), ...(freshUser || {}) });
+        showLoggedIn(getCurrentUser());
       } catch (e) {
         clearCurrentUser();
       }
@@ -137,7 +138,8 @@
         const auth = await api.login({ email, password });
         setAuthSession(auth);
         const user = auth.user;
-        showAlert(`Chào mừng ${user.name}! Đang chuyển hướng...`);
+        const displayName = user.full_name || user.name || user.username || user.email;
+        showAlert(`Chào mừng ${displayName}! Đang chuyển hướng...`);
         renderNavUser();
         setTimeout(() => {
           const back = new URLSearchParams(location.search).get('back');
@@ -159,7 +161,8 @@
         const auth = await api.register({ name, email, phone, password });
         setAuthSession(auth);
         const user = auth.user;
-        showAlert('Đăng ký thành công! Chào mừng ' + user.name);
+        const displayName = user.full_name || user.name || user.username || user.email;
+        showAlert('Đăng ký thành công! Chào mừng ' + displayName);
         renderNavUser();
         setTimeout(() => window.location.href = '/', 1200);
       } catch (e) {
@@ -175,12 +178,14 @@
 
       // Show profile card
       const alertArea = document.getElementById('alert-area');
+      const rank = user.memberRank || user.role || 'user';
+      const displayName = user.full_name || user.name || user.username || user.email || 'User';
       alertArea.innerHTML = `
         <div class="form-custom text-center">
           <div style="font-size:3rem">👤</div>
-          <h4 class="fw-bold mt-3">${user.name}</h4>
+          <h4 class="fw-bold mt-3">${displayName}</h4>
           <div class="my-2">
-            <span class="rank-badge ${rankClass(user.memberRank)}">${rankLabel(user.memberRank)}</span>
+            <span class="rank-badge ${rankClass(rank)}">${rankLabel(rank)}</span>
           </div>
           <p class="text-muted small">${user.email}</p>
           <p class="text-muted small">Tổng chi tiêu: <strong style="color:#f5c518">${formatVND(user.totalSpent || 0)}</strong></p>

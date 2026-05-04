@@ -135,13 +135,12 @@ public class BookingService {
             userRepository.addSpendingWithTx(request.getUserId(), totalAmount, txId);
 
                 bookingRepository.createAuditLogWithTx(
-                    "BOOKING_CREATED",
+                    "create_booking",
                     saved.getKey(),
                     java.util.Map.of(
+                        "bookingCode", saved.getBookingCode(),
                         "userKey", request.getUserId(),
-                        "screeningKey", request.getScreeningId(),
-                        "seatCount", request.getSeatKeys().size(),
-                        "totalAmount", totalAmount
+                        "screeningKey", request.getScreeningId()
                     ),
                     txId
                 );

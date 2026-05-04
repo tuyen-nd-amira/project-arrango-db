@@ -24,7 +24,10 @@ public class MovieRepository {
 
     // ---- SELECT ALL ----
     public List<Movie> findAll() {
-        String aql = "FOR m IN movies FILTER m.status == 'active' SORT m.title ASC RETURN m";
+        String aql =
+            "FOR m IN movies " +
+            "FILTER m.status == null OR m.status IN ['active', 'showing', 'coming_soon'] " +
+            "SORT m.title ASC RETURN m";
         ArangoCursor<Movie> cursor = db.query(aql, null, null, Movie.class);
         return cursor.asListRemaining();
     }
@@ -44,7 +47,7 @@ public class MovieRepository {
     public List<Movie> findByGenre(String genre) {
         String aql =
             "FOR m IN movies " +
-            "FILTER m.status == 'active' " +
+            "FILTER (m.status == null OR m.status IN ['active', 'showing', 'coming_soon']) " +
             "  AND CONTAINS(LOWER(m.genre), LOWER(@genre)) " +
             "SORT m.title ASC RETURN m";
         Map<String, Object> bind = new HashMap<>();
@@ -55,7 +58,11 @@ public class MovieRepository {
 
     // ---- SEARCH by title (LIKE %keyword%) ----
     public List<Movie> searchByTitle(String keyword) {
-        String aql = "FOR m IN movies FILTER m.status == 'active' AND CONTAINS(LOWER(m.title), LOWER(@kw)) RETURN m";
+        String aql =
+            "FOR m IN movies " +
+            "FILTER (m.status == null OR m.status IN ['active', 'showing', 'coming_soon']) " +
+            "  AND CONTAINS(LOWER(m.title), LOWER(@kw)) " +
+            "SORT m.title ASC RETURN m";
         Map<String, Object> bind = new HashMap<>();
         bind.put("kw", keyword);
         ArangoCursor<Movie> cursor = db.query(aql, bind, null, Movie.class);
@@ -65,7 +72,10 @@ public class MovieRepository {
     // ---- INSERT ----
     public Movie save(Movie movie) {
         if (movie.getStatus() == null || movie.getStatus().isBlank()) {
-            movie.setStatus("active");
+            movie.setStatus("showing");
+        }
+        if ((movie.getPosterUrl() == null || movie.getPosterUrl().isBlank()) && movie.getImageUrl() != null) {
+            movie.setPosterUrl(movie.getImageUrl());
         }
         DocumentCreateEntity<Movie> result = db.collection(COL).insertDocument(movie);
         movie.setKey(result.getKey());

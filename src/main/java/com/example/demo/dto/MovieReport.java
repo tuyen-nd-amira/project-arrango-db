@@ -10,7 +10,6 @@ import lombok.NoArgsConstructor;
 public class MovieReport {
     private String movieId;
     private String movieTitle;
-    private String genre;
     private double totalRevenue;
     private long totalTickets;
     private long totalBookings;

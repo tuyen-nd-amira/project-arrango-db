@@ -13,6 +13,10 @@ let selectedSeats = [];   // { key, seatLabel }
 let screeningPrice = 0;
 let currentMovie = null;
 
+function moviePoster(movie) {
+  return movie.poster_url || movie.imageUrl || `https://picsum.photos/seed/${movie._key}/130/195`;
+}
+
 if (!movieId) {
   window.location.href = '/movies.html';
 }
@@ -59,18 +63,16 @@ function buildPageHTML(movie, screenings) {
 
       <!-- Movie info -->
       <div class="movie-card mb-4" style="flex-direction:row;display:flex;overflow:hidden">
-        <img src="${movie.imageUrl}" alt="${movie.title}"
+        <img src="${moviePoster(movie)}" alt="${movie.title}"
              style="width:130px;object-fit:cover;flex-shrink:0"
              onerror="this.src='https://picsum.photos/seed/${movie._key}/130/195'">
         <div class="p-4 flex-grow-1">
           <h3 class="fw-bold mb-1">${movie.title}</h3>
           <div class="d-flex flex-wrap gap-2 mb-2">
-            <span class="badge-genre">${movie.genre}</span>
             <span class="text-muted small">⏱ ${formatDuration(movie.duration)}</span>
-            <span class="rating small">★ ${movie.rating}</span>
+            <span class="text-muted small">${movie.status || ''}</span>
           </div>
           <p class="text-muted" style="font-size:0.88rem;margin-bottom:8px">${movie.description}</p>
-          <small class="text-muted">Đạo diễn: ${movie.director}</small>
         </div>
       </div>
 
@@ -315,10 +317,12 @@ async function confirmBooking() {
     document.getElementById('modal-message').textContent =
       `Đã đặt ${selectedSeats.length} ghế: ${selectedSeats.map(s => s.label).join(', ')}`;
 
-    if (result.user && result.user.memberRank !== user.memberRank) {
+    const oldRank = user.memberRank || user.role || 'user';
+    const newRank = result.user ? (result.user.memberRank || result.user.role || 'user') : oldRank;
+    if (result.user && newRank !== oldRank) {
       const rankEl = document.getElementById('modal-new-rank');
-      rankEl.className = `rank-badge ${rankClass(result.user.memberRank)}`;
-      rankEl.textContent = rankLabel(result.user.memberRank);
+      rankEl.className = `rank-badge ${rankClass(newRank)}`;
+      rankEl.textContent = rankLabel(newRank);
       document.getElementById('modal-rank-update').style.display = 'block';
     }
 

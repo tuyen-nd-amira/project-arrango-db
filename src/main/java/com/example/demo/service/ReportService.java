@@ -40,13 +40,13 @@ public class ReportService {
      */
     public List<MovieReport> getMovieRevenueReport() {
         log.info("[PROCEDURE] SP_MOVIE_REVENUE_REPORT – Tính doanh thu theo phim");
-        List<Map> raw = bookingRepository.getRevenueByMovie();
+        List<Map<String, Object>> raw = bookingRepository.getRevenueByMovie();
         return raw.stream().map(this::mapToMovieReport).collect(Collectors.toList());
     }
 
     public MovieReport getMovieReportById(String movieId) {
         log.info("[PROCEDURE] SP_MOVIE_STATS({}) – Tính doanh thu phim", movieId);
-        Map raw = bookingRepository.getRevenueByMovieId(movieId);
+        Map<String, Object> raw = bookingRepository.getRevenueByMovieId(movieId);
         return mapToMovieReport(raw);
     }
 
@@ -55,18 +55,17 @@ public class ReportService {
         return bookingRepository.getSystemOverview();
     }
 
-    private MovieReport mapToMovieReport(Map raw) {
+    private MovieReport mapToMovieReport(Map<String, Object> raw) {
         MovieReport r = new MovieReport();
         r.setMovieId(safe(raw, "movieId"));
         r.setMovieTitle(safe(raw, "movieTitle"));
-        r.setGenre(safe(raw, "genre"));
         r.setTotalRevenue(toDouble(raw.get("totalRevenue")));
         r.setTotalTickets(toLong(raw.get("totalTickets")));
         r.setTotalBookings(toLong(raw.get("totalBookings")));
         return r;
     }
 
-    private String safe(Map m, String key) {
+    private String safe(Map<String, Object> m, String key) {
         Object v = m.get(key);
         return v == null ? "" : v.toString();
     }

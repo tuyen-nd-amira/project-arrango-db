@@ -21,5 +21,5 @@ jwt:
   access-ttl-seconds: ${JWT_ACCESS_TTL_SECONDS:2592000}
 
 gemini:
-  api-key: AIzaSyBA6YLlvQXv2YNdIdzgOgxWU8hzFjA_At0
+  api-key: ${GEMINI_API_KEY:}
   model: ${GEMINI_MODEL:gemini-2.5-flash}

@@ -32,6 +32,139 @@ Tinh nang chinh:
   - edge: booking_seats
   - orphan: users, movies, rooms, screenings, audit_logs
 
+### Chi tiet schema theo collection
+
+1) users
+- Muc dich: thong tin nguoi dung + vai tro
+- Field chinh:
+  - _key
+  - username (unique)
+  - email (unique)
+  - full_name
+  - password
+  - role (user | vip | premium | admin)
+  - totalSpent
+  - createdAt
+
+2) movies
+- Muc dich: thong tin phim de hien thi va dat ve
+- Field chinh:
+  - _key
+  - title
+  - description
+  - duration
+  - poster_url
+  - status (showing | coming_soon | active)
+
+3) rooms
+- Muc dich: thong tin phong chieu
+- Field chinh:
+  - _key
+  - name
+  - capacity
+  - type (standard | vip | imax)
+
+4) seats
+- Muc dich: danh sach ghe cua tung phong
+- Field chinh:
+  - _key
+  - room_key
+  - seat_row
+  - seat_number
+  - type
+
+5) screenings
+- Muc dich: suat chieu cua phim
+- Field chinh:
+  - _key
+  - movie_key
+  - room_key
+  - start_time
+  - price
+  - status
+
+6) bookings
+- Muc dich: phieu dat ve
+- Field chinh:
+  - _key
+  - booking_code (unique)
+  - user_key
+  - screening_key
+  - movie_key
+  - seat_keys
+  - seat_labels
+  - total_amount
+  - status (confirmed | cancelled)
+  - created_at
+  - movie_title, show_time, cinema_name (snapshot de doc nhanh)
+
+7) booking_seats (edge)
+- Muc dich: lien ket bookings -> seats de truy van 1 ve da giu ghe nao
+- Field chinh:
+  - _from = bookings/<bookingKey>
+  - _to = seats/<seatKey>
+  - screening_key
+  - booking_status
+  - created_at
+
+8) audit_logs
+- Muc dich: nhat ky he thong cho hanh dong dat ve
+- Field chinh:
+  - _key
+  - action (vi du: create_booking)
+  - entity_key
+  - payload
+  - created_at
+
+### Index quan trong
+- users.email (unique hash)
+- users.username (unique hash)
+- seats(room_key, seat_row, seat_number) (unique persistent)
+- screenings(movie_key, start_time) (persistent)
+- bookings.booking_code (unique persistent)
+- bookings.user_key (hash)
+- bookings.screening_key (hash)
+- bookings.status (hash)
+- booking_seats(_to, screening_key) (unique persistent)
+
+### AQL kiem tra nhanh du lieu
+```aql
+// 1) Dem so document theo collection
+RETURN {
+  users: LENGTH(users),
+  movies: LENGTH(movies),
+  rooms: LENGTH(rooms),
+  seats: LENGTH(seats),
+  screenings: LENGTH(screenings),
+  bookings: LENGTH(bookings),
+  booking_seats: LENGTH(booking_seats),
+  audit_logs: LENGTH(audit_logs)
+}
+```
+
+```aql
+// 2) Xem 1 booking dang giu nhung ghe nao qua edge booking_seats
+LET b = DOCUMENT('bookings', @bookingKey)
+FOR e IN booking_seats
+  FILTER e._from == b._id
+  FOR s IN seats
+    FILTER s._id == e._to
+    RETURN {
+      booking: b.booking_code,
+      seat_key: s._key,
+      room_key: s.room_key,
+      seat_row: s.seat_row,
+      seat_number: s.seat_number
+    }
+```
+
+```aql
+// 3) Kiem tra ghe da bi dat trong 1 screening
+FOR e IN booking_seats
+  FILTER e.screening_key == @screeningKey AND e.booking_status == 'confirmed'
+  RETURN PARSE_IDENTIFIER(e._to).key
+```
+
 ## 3. Chay du an bang Docker Compose
 ### 3.1. Yeu cau
 - Docker

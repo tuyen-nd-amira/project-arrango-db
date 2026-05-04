@@ -58,8 +58,10 @@ public class ScreeningService {
         // Schema mới: seats thuộc room, không tạo theo từng screening.
         if (seatRepository.countByRoom(cinema.getKey()) == 0) {
             List<ScreeningSeat> seats = new ArrayList<>();
-            for (int row = 0; row < cinema.getTotalRows(); row++) {
-                for (int col = 0; col < cinema.getTotalCols(); col++) {
+            int totalRows = cinema.getTotalRows();
+            int totalCols = cinema.getTotalCols();
+            for (int row = 0; row < totalRows; row++) {
+                for (int col = 0; col < totalCols; col++) {
                     ScreeningSeat seat = new ScreeningSeat();
                     seat.setScreeningId(cinema.getKey());
                     seat.setRow(row);

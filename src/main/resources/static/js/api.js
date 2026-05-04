@@ -22,11 +22,38 @@ const AUTH_EXPIRES_AT_KEY = 'cinema_access_expires_at';
 })();
 
 // ── Auth helpers ────────────────────────────────────────────
+function normalizeValue(value) {
+  if (value === null || value === undefined) return '';
+  const text = String(value).trim();
+  if (!text || text.toLowerCase() === 'undefined' || text.toLowerCase() === 'null') return '';
+  return text;
+}
+
+function normalizeUser(user) {
+  if (!user || typeof user !== 'object') return null;
+
+  const normalized = { ...user };
+  const fullName = normalizeValue(normalized.full_name || normalized.name);
+  const rank = normalizeValue(normalized.memberRank || normalized.role);
+
+  normalized.name = fullName || normalizeValue(normalized.username) || normalizeValue(normalized.email) || 'User';
+  normalized.full_name = fullName || normalized.name;
+  normalized.memberRank = rank || 'user';
+  normalized.role = normalized.memberRank;
+
+  if (normalized.totalSpent === null || normalized.totalSpent === undefined || Number.isNaN(Number(normalized.totalSpent))) {
+    normalized.totalSpent = 0;
+  }
+
+  return normalized;
+}
+
 function getCurrentUser() {
   try {
     const raw = sessionStorage.getItem(AUTH_USER_KEY);
     if (!raw) return null;
-    const user = JSON.parse(raw);
+    const user = normalizeUser(JSON.parse(raw));
+    if (!user) return null;
     const tokenUserId = getAuthUserId();
     const currentUserId = user?._key || user?.key || null;
 
@@ -69,7 +96,9 @@ function getAuthUserId() {
   return payload?.sub || null;
 }
 function setCurrentUser(user) {
-  sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+  const normalized = normalizeUser(user);
+  if (!normalized) return;
+  sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(normalized));
 }
 function setAuthSession(auth) {
   if (!auth) return;
@@ -111,11 +140,17 @@ function formatDuration(min) {
   return h > 0 ? `${h}h${m > 0 ? m + 'm' : ''}` : `${m}m`;
 }
 function rankLabel(rank) {
-  const map = { normal: '🎟 Normal', vip: '⭐ VIP', premium: '🏆 Premium' };
+  const map = {
+    normal: '🎟 Normal',
+    user: '👤 User',
+    vip: '⭐ VIP',
+    premium: '🏆 Premium',
+    admin: '🛡 Admin'
+  };
   return map[rank] || rank;
 }
 function rankClass(rank) {
-  return { normal: 'rank-normal', vip: 'rank-vip', premium: 'rank-premium' }[rank] || 'rank-normal';
+  return { normal: 'rank-normal', user: 'rank-normal', vip: 'rank-vip', premium: 'rank-premium', admin: 'rank-premium' }[rank] || 'rank-normal';
 }
 
 // ── HTTP helpers ────────────────────────────────────────────
@@ -171,9 +206,11 @@ function renderNavUser() {
   const el = document.getElementById('nav-user');
   if (!el) return;
   if (user) {
+    const rank = user.memberRank || 'user';
+    const displayName = user.name || 'User';
     el.innerHTML = `
-      <span class="rank-badge ${rankClass(user.memberRank)} me-2">${rankLabel(user.memberRank)}</span>
-      <span class="text-dark me-3 fw-semibold">${user.name}</span>
+      <span class="rank-badge ${rankClass(rank)} me-2">${rankLabel(rank)}</span>
+      <span class="text-dark me-3 fw-semibold">${displayName}</span>
       <button class="btn-outline-custom btn-sm" onclick="logout()">Đăng xuất</button>`;
   } else {
     el.innerHTML = `

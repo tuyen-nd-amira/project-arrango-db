@@ -30,11 +30,11 @@ public class AiReviewService {
             .connectTimeout(Duration.ofSeconds(8))
             .build();
 
-    @Value("${gemini.api-key:}")
-    private String geminiApiKey;
+        @Value("${gemini.api-key:}")
+        private String geminiApiKey;
 
-    @Value("${gemini.model:gemini-1.5-flash}")
-    private String geminiModel;
+        @Value("${gemini.model:gemini-2.5-flash}")
+        private String geminiModel;
 
     public Map<String, String> generateMovieReview(Movie movie) {
         if (movie == null) {
@@ -45,28 +45,28 @@ public class AiReviewService {
             return Map.of(
                     "review", fallbackReview(movie),
                     "source", "fallback",
-                    "model", geminiModel
+                "model", geminiModel,
+                "note", "GEMINI_API_KEY is empty"
             );
         }
 
         try {
             String url = "https://generativelanguage.googleapis.com/v1beta/models/"
-                    + URLEncoder.encode(geminiModel, StandardCharsets.UTF_8)
-                    + ":generateContent?key="
-                    + URLEncoder.encode(geminiApiKey, StandardCharsets.UTF_8);
+                + URLEncoder.encode(geminiModel, StandardCharsets.UTF_8)
+                + ":generateContent?key="
+                + URLEncoder.encode(geminiApiKey, StandardCharsets.UTF_8);
 
             String prompt = buildPrompt(movie);
             ObjectNode root = objectMapper.createObjectNode();
             ObjectNode generationConfig = root.putObject("generationConfig");
             generationConfig.put("temperature", 0.7);
             generationConfig.put("maxOutputTokens", 512);
-            generationConfig.putObject("thinkingConfig").put("thinkingBudget", 0);
 
             root.putArray("contents")
-                    .addObject()
-                    .putArray("parts")
-                    .addObject()
-                    .put("text", prompt);
+                .addObject()
+                .putArray("parts")
+                .addObject()
+                .put("text", prompt);
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
@@ -77,11 +77,15 @@ public class AiReviewService {
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                String bodySnippet = response.body() == null ? "" : response.body();
+                if (bodySnippet.length() > 200) {
+                    bodySnippet = bodySnippet.substring(0, 200) + "...";
+                }
                 return Map.of(
                         "review", fallbackReview(movie),
                         "source", "fallback",
                         "model", geminiModel,
-                        "note", "Gemini HTTP " + response.statusCode()
+                        "note", "Gemini HTTP " + response.statusCode() + " - " + bodySnippet
                 );
             }
 
@@ -105,7 +109,12 @@ public class AiReviewService {
 
             if (review.isBlank()) {
                 review = fallbackReview(movie);
-                return Map.of("review", review, "source", "fallback", "model", geminiModel);
+                return Map.of(
+                        "review", review,
+                        "source", "fallback",
+                        "model", geminiModel,
+                        "note", "Gemini returned empty content"
+                );
             }
 
             return Map.of("review", review, "source", "gemini", "model", geminiModel);
@@ -131,16 +140,13 @@ public class AiReviewService {
                 + "Kết thúc bằng khuyến nghị ngắn: nên xem ở rạp hay đợi online. "
                 + "\n\nThông tin phim:"
                 + "\n- Tên: " + safe(movie.getTitle())
-                + "\n- Thể loại: " + safe(movie.getGenre())
                 + "\n- Thời lượng: " + movie.getDuration() + " phút"
-                + "\n- Rating hiện có: " + movie.getRating()
                 + "\n- Mô tả: " + safe(description);
     }
 
     private String fallbackReview(Movie movie) {
         return "Phim " + safe(movie.getTitle())
-                + " thuộc thể loại " + safe(movie.getGenre())
-                + ", thời lượng " + movie.getDuration() + " phút. "
+                + " có thời lượng " + movie.getDuration() + " phút. "
                 + "Nội dung có nhịp độ vừa phải, phù hợp cho buổi xem giải trí. "
                 + "Nếu bạn thích thể loại này thì đây là lựa chọn đáng cân nhắc tại rạp.";
     }

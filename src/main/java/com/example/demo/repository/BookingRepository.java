@@ -18,7 +18,21 @@ import lombok.RequiredArgsConstructor;
 public class BookingRepository {
 
     private final ArangoDatabase db;
-    private static final String COL = "bookings";
+
+    private static class RevenueStats {
+        public String movieId;
+        public String movieTitle;
+        public double totalRevenue;
+        public long totalTickets;
+        public long totalBookings;
+    }
+
+    private static class SystemOverview {
+        public double totalRevenue;
+        public long totalTickets;
+        public long totalBookings;
+        public long totalUsers;
+    }
 
     // ---- Lấy lịch sử đặt vé của user ----
     public List<Booking> findByUserId(String userId) {
@@ -123,10 +137,10 @@ public class BookingRepository {
     }
 
     // ---- Tổng doanh thu theo phim (dùng Stored Procedure: CINEMA::SP_MOVIE_STATS) ----
-    public List<Map> getRevenueByMovie() {
+    public List<Map<String, Object>> getRevenueByMovie() {
         String aql =
             "FOR m IN movies " +
-            "FILTER m.status == 'active' " +
+            "FILTER m.status == null OR m.status IN ['active', 'showing', 'coming_soon'] " +
             "LET stats = CINEMA::SP_MOVIE_STATS(m._key) " +
             "LET totalBookings = LENGTH(" +
             "  FOR b IN bookings " +
@@ -137,17 +151,18 @@ public class BookingRepository {
             "RETURN { " +
             "  movieId: m._key, " +
             "  movieTitle: m.title, " +
-            "  genre: m.genre, " +
             "  totalRevenue: stats.totalRevenue, " +
             "  totalTickets: stats.totalTickets, " +
             "  totalBookings: totalBookings " +
             "}";
-        ArangoCursor<Map> cursor = db.query(aql, null, null, Map.class);
-        return cursor.asListRemaining();
+        ArangoCursor<RevenueStats> cursor = db.query(aql, null, null, RevenueStats.class);
+        return cursor.asListRemaining().stream()
+            .map(this::toRevenueMap)
+                .toList();
     }
 
     // ---- Doanh thu + vé của một phim cụ thể (Stored Procedure) ----
-    public Map getRevenueByMovieId(String movieId) {
+    public Map<String, Object> getRevenueByMovieId(String movieId) {
         String aql =
             "LET movie = DOCUMENT('movies', @mid) " +
             "LET stats = CINEMA::SP_MOVIE_STATS(@mid) " +
@@ -159,23 +174,45 @@ public class BookingRepository {
             "RETURN { " +
             "  movieId: @mid, " +
             "  movieTitle: movie == null ? '' : movie.title, " +
-            "  genre: movie == null ? '' : movie.genre, " +
             "  totalRevenue: stats.totalRevenue, " +
             "  totalTickets: stats.totalTickets, " +
             "  totalBookings: totalBookings " +
             "}";
         Map<String, Object> bind = new HashMap<>();
         bind.put("mid", movieId);
-        ArangoCursor<Map> cursor = db.query(aql, bind, null, Map.class);
-        List<Map> result = cursor.asListRemaining();
+        ArangoCursor<RevenueStats> cursor = db.query(aql, bind, null, RevenueStats.class);
+        List<Map<String, Object>> result = cursor.asListRemaining().stream()
+            .map(this::toRevenueMap)
+                .toList();
         return result.isEmpty() ? new HashMap<>() : result.get(0);
     }
 
     // ---- Tổng quan hệ thống (Stored Procedure: CINEMA::SP_SYSTEM_OVERVIEW) ----
-    public Map getSystemOverview() {
+    public Map<String, Object> getSystemOverview() {
         String aql = "RETURN CINEMA::SP_SYSTEM_OVERVIEW()";
-        ArangoCursor<Map> cursor = db.query(aql, null, null, Map.class);
-        List<Map> result = cursor.asListRemaining();
-        return result.isEmpty() ? new HashMap<>() : result.get(0);
+        ArangoCursor<SystemOverview> cursor = db.query(aql, null, null, SystemOverview.class);
+        if (!cursor.hasNext()) {
+            return new HashMap<>();
+        }
+        return toOverviewMap(cursor.next());
+    }
+
+    private Map<String, Object> toRevenueMap(RevenueStats row) {
+        Map<String, Object> mapped = new HashMap<>();
+        mapped.put("movieId", row.movieId);
+        mapped.put("movieTitle", row.movieTitle);
+        mapped.put("totalRevenue", row.totalRevenue);
+        mapped.put("totalTickets", row.totalTickets);
+        mapped.put("totalBookings", row.totalBookings);
+        return mapped;
+    }
+
+    private Map<String, Object> toOverviewMap(SystemOverview row) {
+        Map<String, Object> mapped = new HashMap<>();
+        mapped.put("totalRevenue", row.totalRevenue);
+        mapped.put("totalTickets", row.totalTickets);
+        mapped.put("totalBookings", row.totalBookings);
+        mapped.put("totalUsers", row.totalUsers);
+        return mapped;
     }
 }

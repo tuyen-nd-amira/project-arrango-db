@@ -70,7 +70,7 @@ public class UserRepository {
     public void addSpendingWithTx(String userId, double amount, String txId) {
         String aql =
             "FOR u IN users FILTER u._key == @uid " +
-            "UPDATE u WITH { totalSpent: u.totalSpent + @amount } IN users";
+            "UPDATE u WITH { totalSpent: TO_NUMBER(u.totalSpent) + @amount } IN users";
         Map<String, Object> bind = new HashMap<>();
         bind.put("uid", userId);
         bind.put("amount", amount);
@@ -91,7 +91,7 @@ public class UserRepository {
     public void updateMemberRank(String userId, String newRank) {
         String aql =
             "FOR u IN users FILTER u._key == @uid " +
-            "UPDATE u WITH { memberRank: @rank } IN users";
+            "UPDATE u WITH { role: @rank } IN users";
         Map<String, Object> bind = new HashMap<>();
         bind.put("uid", userId);
         bind.put("rank", newRank);
@@ -107,7 +107,7 @@ public class UserRepository {
     }
 
     public List<User> findAll() {
-        String aql = "FOR u IN users SORT u.name ASC RETURN u";
+        String aql = "FOR u IN users SORT u.full_name ASC RETURN u";
         ArangoCursor<User> cursor = db.query(aql, null, null, User.class);
         return cursor.asListRemaining();
     }

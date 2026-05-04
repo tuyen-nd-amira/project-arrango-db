@@ -4,9 +4,7 @@ import java.io.IOException;
 import java.io.Reader;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -118,7 +116,6 @@ public class DataInitializer implements CommandLineRunner {
         }
 
         List<Movie> movies = new ArrayList<>();
-        DateTimeFormatter csvDateFmt = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.forLanguageTag("vi"));
         Random rnd = new Random(2026);
 
         try (Reader reader = Files.newBufferedReader(csvPath);
@@ -131,27 +128,18 @@ public class DataInitializer implements CommandLineRunner {
                 }
 
                 String genre = readAny(row, "genre");
-                String release = readAny(row, "release_date");
                 String poster = readAny(row, "poster_url");
                 String sourceUrl = readAny(row, "url");
                 String country = readAny(row, "country");
 
-                String normalizedRelease = normalizeDate(release, csvDateFmt);
                 int duration = 90 + rnd.nextInt(71);
-                double basePrice = 75_000 + rnd.nextInt(56) * 1_000;
-                double rating = Math.round((6.5 + rnd.nextDouble() * 3.4) * 10.0) / 10.0;
 
                 Movie m = movie(
                         title,
                         buildDescription(title, country, sourceUrl),
                         genre.isBlank() ? "Drama" : genre,
                         duration,
-                        poster.isBlank() ? "https://picsum.photos/seed/" + slugify(title) + "/400/600" : poster,
-                        basePrice,
-                        normalizedRelease,
-                        "N/A",
-                        "N/A",
-                        rating
+                        poster.isBlank() ? "https://picsum.photos/seed/" + slugify(title) + "/400/600" : poster
                 );
                 movies.add(m);
             }
@@ -169,11 +157,13 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private List<Cinema> seedRooms() {
-        Cinema cgv = new Cinema(null, null, "CGV Vincom Center", 8, 10, "191 Bà Triệu, Hai Bà Trưng, Hà Nội");
-        Cinema lotte = new Cinema(null, null, "Lotte Cinema Landmark", 7, 12, "72A Nguyễn Thị Minh Khai, TP. HCM");
-        cinemaRepository.save(cgv);
-        cinemaRepository.save(lotte);
-        log.info("Đã seed 2 phòng chiếu (rooms)");
+        List<Cinema> rooms = List.of(
+                new Cinema(null, null, "Phòng Standard 1", 60, "standard"),
+                new Cinema(null, null, "Phòng VIP", 20, "vip"),
+                new Cinema(null, null, "Phòng IMAX 1", 80, "imax")
+        );
+        rooms.forEach(cinemaRepository::save);
+        log.info("Đã seed {} phòng chiếu (rooms)", rooms.size());
         return cinemaRepository.findAll();
     }
 
@@ -194,7 +184,7 @@ public class DataInitializer implements CommandLineRunner {
                 s.setMovieId(movie.getKey());
                 s.setCinemaId(room.getKey());
                 s.setShowTime(start.plusHours(i + slots[t]).toString());
-                s.setPrice(movie.getBasePrice());
+                s.setPrice(defaultPriceForRoom(room));
                 s.setStatus("active");
                 screeningService.create(s);
             }
@@ -220,32 +210,35 @@ public class DataInitializer implements CommandLineRunner {
         return false;
     }
 
-    private Movie movie(String title, String desc, String genre, int dur, String img,
-                        double price, String release, String dir, String cast, double rating) {
-        return new Movie(null, null, title, desc, genre, dur, img, price, release, dir, cast, rating, "active");
+    private Movie movie(String title, String desc, String genre, int dur, String posterUrl) {
+        Movie movie = new Movie();
+        movie.setTitle(title);
+        movie.setDescription(desc);
+        movie.setGenre(genre);
+        movie.setDuration(dur);
+        movie.setPosterUrl(posterUrl);
+        movie.setStatus("showing");
+        return movie;
     }
 
     private void seedFallbackMovies() {
         List<Movie> movies = List.of(
-                movie("Avengers: Endgame", "Mẫu dữ liệu fallback", "Action", 181, "https://picsum.photos/seed/avengers/400/600", 110_000, "2026-05-01", "Anthony Russo", "Robert Downey Jr.", 9.5),
-                movie("Inception", "Mẫu dữ liệu fallback", "Sci-Fi", 148, "https://picsum.photos/seed/inception/400/600", 95_000, "2026-04-28", "Christopher Nolan", "Leonardo DiCaprio", 9.2),
-                movie("The Lion King", "Mẫu dữ liệu fallback", "Animation", 118, "https://picsum.photos/seed/lionking/400/600", 85_000, "2026-05-02", "Jon Favreau", "Donald Glover", 8.8),
-                movie("Titanic", "Mẫu dữ liệu fallback", "Romance", 195, "https://picsum.photos/seed/titanic/400/600", 90_000, "2026-04-25", "James Cameron", "Leonardo DiCaprio", 9.0),
-                movie("Spider-Man: No Way Home", "Mẫu dữ liệu fallback", "Action", 148, "https://picsum.photos/seed/spiderman/400/600", 100_000, "2026-05-03", "Jon Watts", "Tom Holland", 9.1),
-                movie("The Dark Knight", "Mẫu dữ liệu fallback", "Action", 152, "https://picsum.photos/seed/darkknight/400/600", 105_000, "2026-04-20", "Christopher Nolan", "Christian Bale", 9.8)
+                movie("Avengers: Endgame", "Mẫu dữ liệu fallback", "Action", 181, "https://picsum.photos/seed/avengers/400/600"),
+                movie("Inception", "Mẫu dữ liệu fallback", "Sci-Fi", 148, "https://picsum.photos/seed/inception/400/600"),
+                movie("The Lion King", "Mẫu dữ liệu fallback", "Animation", 118, "https://picsum.photos/seed/lionking/400/600"),
+                movie("Titanic", "Mẫu dữ liệu fallback", "Romance", 195, "https://picsum.photos/seed/titanic/400/600"),
+                movie("Spider-Man: No Way Home", "Mẫu dữ liệu fallback", "Action", 148, "https://picsum.photos/seed/spiderman/400/600"),
+                movie("The Dark Knight", "Mẫu dữ liệu fallback", "Action", 152, "https://picsum.photos/seed/darkknight/400/600")
         );
         movies.forEach(movieRepository::save);
     }
 
-    private String normalizeDate(String value, DateTimeFormatter formatter) {
-        if (value == null || value.isBlank()) {
-            return LocalDate.now().toString();
-        }
-        try {
-            return LocalDate.parse(value.trim(), formatter).toString();
-        } catch (Exception ignored) {
-            return LocalDate.now().toString();
-        }
+    private double defaultPriceForRoom(Cinema room) {
+        return switch ((room.getType() == null ? "" : room.getType()).toLowerCase()) {
+            case "vip" -> 150_000;
+            case "imax" -> 200_000;
+            default -> 100_000;
+        };
     }
 
     private String buildDescription(String title, String country, String sourceUrl) {

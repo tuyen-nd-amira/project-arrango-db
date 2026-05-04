@@ -16,14 +16,13 @@ import lombok.RequiredArgsConstructor;
 public class CinemaRepository {
 
     private final ArangoDatabase db;
-    private static final String COL = "rooms";
 
     public List<Cinema> findAll() {
         String aql =
-            "FOR r IN rooms SORT r.room_name ASC " +
+            "FOR r IN rooms SORT r.name ASC " +
             "RETURN { " +
             "  _key: r._key, _id: r._id, " +
-            "  name: r.room_name, totalRows: r.total_rows, totalCols: r.total_cols, address: r.location " +
+            "  name: r.name, capacity: r.capacity, type: r.type " +
             "}";
         ArangoCursor<Cinema> cursor = db.query(aql, null, null, Cinema.class);
         return cursor.asListRemaining();
@@ -34,7 +33,7 @@ public class CinemaRepository {
             "FOR r IN rooms FILTER r._key == @key LIMIT 1 " +
             "RETURN { " +
             "  _key: r._key, _id: r._id, " +
-            "  name: r.room_name, totalRows: r.total_rows, totalCols: r.total_cols, address: r.location " +
+            "  name: r.name, capacity: r.capacity, type: r.type " +
             "}";
         ArangoCursor<Cinema> cursor = db.query(aql, Map.of("key", key), null, Cinema.class);
         List<Cinema> result = cursor.asListRemaining();
@@ -44,15 +43,14 @@ public class CinemaRepository {
     public Cinema save(Cinema cinema) {
         String aql =
             "INSERT { " +
-            "  room_name: @name, total_rows: @rows, total_cols: @cols, location: @address " +
+            "  name: @name, capacity: @capacity, type: @type " +
             "} INTO rooms RETURN NEW";
         ArangoCursor<Cinema> cursor = db.query(
                 aql,
                 Map.of(
                         "name", cinema.getName(),
-                        "rows", cinema.getTotalRows(),
-                        "cols", cinema.getTotalCols(),
-                        "address", cinema.getAddress() == null ? "" : cinema.getAddress()
+                "capacity", cinema.getCapacity(),
+                "type", cinema.getType() == null ? "standard" : cinema.getType()
                 ),
                 null,
                 Cinema.class
