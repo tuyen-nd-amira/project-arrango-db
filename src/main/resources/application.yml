@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: CinemaBooking
+
+server:
+  port: 8080
+
+arangodb:
+  hosts: ${ARANGO_HOST:127.0.0.1}:${ARANGO_PORT:8529}
+  database: ${ARANGO_DATABASE:cinema_db}
+  user: ${ARANGO_USER:root}
+  password: ${ARANGO_PASSWORD:123456}
+
+app:
+  seed:
+    mode: ${APP_SEED_MODE:smart}
+    reset-users: ${APP_SEED_RESET_USERS:false}
+
+jwt:
+  secret: ${JWT_SECRET:CinemaBookSuperSecretKeyForJwtAccessToken_2026_ChangeThis}
+  access-ttl-seconds: ${JWT_ACCESS_TTL_SECONDS:2592000}
+
+gemini:
+  api-key: AIzaSyBA6YLlvQXv2YNdIdzgOgxWU8hzFjA_At0
+  model: ${GEMINI_MODEL:gemini-2.5-flash}

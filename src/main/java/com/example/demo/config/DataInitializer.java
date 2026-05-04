@@ -1,0 +1,274 @@
+package com.example.demo.config;
+
+import java.io.IOException;
+import java.io.Reader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Random;
+
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVRecord;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.stereotype.Component;
+
+import com.arangodb.ArangoDatabase;
+import com.example.demo.model.Cinema;
+import com.example.demo.model.Movie;
+import com.example.demo.model.Screening;
+import com.example.demo.repository.CinemaRepository;
+import com.example.demo.repository.MovieRepository;
+import com.example.demo.repository.ScreeningRepository;
+import com.example.demo.service.ScreeningService;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class DataInitializer implements CommandLineRunner {
+
+    private final ArangoDatabase arangoDatabase;
+    private final MovieRepository movieRepository;
+    private final CinemaRepository cinemaRepository;
+    private final ScreeningRepository screeningRepository;
+    private final ScreeningService screeningService;
+
+    @Value("${app.seed.mode:smart}")
+    private String seedMode;
+
+    @Value("${app.seed.reset-users:false}")
+    private boolean resetUsers;
+
+    @Override
+    public void run(String... args) {
+        if ("reset".equalsIgnoreCase(seedMode)) {
+            resetMockCollections();
+            log.info("app.seed.mode=reset: đã xoá dữ liệu cũ để seed lại dữ liệu mẫu.");
+        }
+
+        boolean seeded = false;
+
+        List<Movie> movies = movieRepository.findAll();
+        if (movies.isEmpty()) {
+            int seededMovies = seedMoviesFromCsv();
+            log.info("Đã seed {} phim từ CSV", seededMovies);
+            movies = movieRepository.findAll();
+            seeded = true;
+        }
+
+        List<Cinema> rooms = cinemaRepository.findAll();
+        if (rooms.isEmpty()) {
+            rooms = seedRooms();
+            seeded = true;
+        }
+
+        boolean hasAnyScreenings = !screeningRepository.findAll().isEmpty();
+        boolean hasBookableScreenings = hasBookableScreenings(movies);
+
+        if (!hasAnyScreenings || !hasBookableScreenings) {
+            seedScreenings(rooms);
+            if (!hasBookableScreenings) {
+                log.info("Đã tự sửa dữ liệu: tạo mới suất chiếu hợp lệ để có thể đặt vé.");
+            }
+            seeded = true;
+        }
+
+        if (seeded) {
+            log.info("Khởi tạo dữ liệu mẫu hoàn tất.");
+        } else {
+            log.info("Database đã có dữ liệu, bỏ qua seeding.");
+        }
+    }
+
+    private void resetMockCollections() {
+        // Truncate theo thứ tự để tránh dữ liệu mồ côi trong graph edge collection.
+        List<String> collections = new ArrayList<>(List.of(
+                "booking_seats", "bookings", "screenings", "seats",
+                "rooms", "movies", "audit_logs"
+        ));
+        if (resetUsers) {
+            collections.add("users");
+        }
+        for (String name : collections) {
+            if (arangoDatabase.collection(name).exists()) {
+                arangoDatabase.collection(name).truncate();
+            }
+        }
+
+        if (!resetUsers) {
+            log.info("Giữ lại dữ liệu users khi reset mock data (app.seed.reset-users=false)");
+        }
+    }
+
+    private int seedMoviesFromCsv() {
+        Path csvPath = Path.of("movies_metadata_encoded.csv");
+        if (!Files.exists(csvPath)) {
+            log.warn("Không tìm thấy file CSV: {}. Dùng fallback dữ liệu nhỏ.", csvPath.toAbsolutePath());
+            seedFallbackMovies();
+            return 6;
+        }
+
+        List<Movie> movies = new ArrayList<>();
+        DateTimeFormatter csvDateFmt = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.forLanguageTag("vi"));
+        Random rnd = new Random(2026);
+
+        try (Reader reader = Files.newBufferedReader(csvPath);
+             CSVParser parser = CSVFormat.DEFAULT.builder().setHeader().setSkipHeaderRecord(true).setTrim(true).build().parse(reader)) {
+
+            for (CSVRecord row : parser) {
+                String title = readAny(row, "title");
+                if (title.isBlank()) {
+                    continue;
+                }
+
+                String genre = readAny(row, "genre");
+                String release = readAny(row, "release_date");
+                String poster = readAny(row, "poster_url");
+                String sourceUrl = readAny(row, "url");
+                String country = readAny(row, "country");
+
+                String normalizedRelease = normalizeDate(release, csvDateFmt);
+                int duration = 90 + rnd.nextInt(71);
+                double basePrice = 75_000 + rnd.nextInt(56) * 1_000;
+                double rating = Math.round((6.5 + rnd.nextDouble() * 3.4) * 10.0) / 10.0;
+
+                Movie m = movie(
+                        title,
+                        buildDescription(title, country, sourceUrl),
+                        genre.isBlank() ? "Drama" : genre,
+                        duration,
+                        poster.isBlank() ? "https://picsum.photos/seed/" + slugify(title) + "/400/600" : poster,
+                        basePrice,
+                        normalizedRelease,
+                        "N/A",
+                        "N/A",
+                        rating
+                );
+                movies.add(m);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Không đọc được file movies_metadata_encoded.csv", e);
+        }
+
+        if (movies.isEmpty()) {
+            seedFallbackMovies();
+            return 6;
+        }
+
+        movies.forEach(movieRepository::save);
+        return movies.size();
+    }
+
+    private List<Cinema> seedRooms() {
+        Cinema cgv = new Cinema(null, null, "CGV Vincom Center", 8, 10, "191 Bà Triệu, Hai Bà Trưng, Hà Nội");
+        Cinema lotte = new Cinema(null, null, "Lotte Cinema Landmark", 7, 12, "72A Nguyễn Thị Minh Khai, TP. HCM");
+        cinemaRepository.save(cgv);
+        cinemaRepository.save(lotte);
+        log.info("Đã seed 2 phòng chiếu (rooms)");
+        return cinemaRepository.findAll();
+    }
+
+    private void seedScreenings(List<Cinema> rooms) {
+        List<Movie> movies = movieRepository.findAll();
+        if (rooms.isEmpty() || movies.isEmpty()) {
+            return;
+        }
+
+        LocalDateTime start = LocalDateTime.now().plusDays(1).withHour(9).withMinute(0).withSecond(0).withNano(0);
+        int[] slots = {0, 4, 8, 12};
+
+        for (int i = 0; i < movies.size(); i++) {
+            Movie movie = movies.get(i);
+            for (int t = 0; t < 2; t++) {
+                Cinema room = rooms.get((i + t) % rooms.size());
+                Screening s = new Screening();
+                s.setMovieId(movie.getKey());
+                s.setCinemaId(room.getKey());
+                s.setShowTime(start.plusHours(i + slots[t]).toString());
+                s.setPrice(movie.getBasePrice());
+                s.setStatus("active");
+                screeningService.create(s);
+            }
+        }
+        log.info("Đã seed {} suất chiếu", movies.size() * 2);
+    }
+
+    private boolean hasBookableScreenings(List<Movie> movies) {
+        if (movies == null || movies.isEmpty()) {
+            return false;
+        }
+
+        int sampleSize = Math.min(10, movies.size());
+        for (int i = 0; i < sampleSize; i++) {
+            Movie movie = movies.get(i);
+            if (movie.getKey() == null || movie.getKey().isBlank()) {
+                continue;
+            }
+            if (!screeningRepository.findByMovieId(movie.getKey()).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Movie movie(String title, String desc, String genre, int dur, String img,
+                        double price, String release, String dir, String cast, double rating) {
+        return new Movie(null, null, title, desc, genre, dur, img, price, release, dir, cast, rating, "active");
+    }
+
+    private void seedFallbackMovies() {
+        List<Movie> movies = List.of(
+                movie("Avengers: Endgame", "Mẫu dữ liệu fallback", "Action", 181, "https://picsum.photos/seed/avengers/400/600", 110_000, "2026-05-01", "Anthony Russo", "Robert Downey Jr.", 9.5),
+                movie("Inception", "Mẫu dữ liệu fallback", "Sci-Fi", 148, "https://picsum.photos/seed/inception/400/600", 95_000, "2026-04-28", "Christopher Nolan", "Leonardo DiCaprio", 9.2),
+                movie("The Lion King", "Mẫu dữ liệu fallback", "Animation", 118, "https://picsum.photos/seed/lionking/400/600", 85_000, "2026-05-02", "Jon Favreau", "Donald Glover", 8.8),
+                movie("Titanic", "Mẫu dữ liệu fallback", "Romance", 195, "https://picsum.photos/seed/titanic/400/600", 90_000, "2026-04-25", "James Cameron", "Leonardo DiCaprio", 9.0),
+                movie("Spider-Man: No Way Home", "Mẫu dữ liệu fallback", "Action", 148, "https://picsum.photos/seed/spiderman/400/600", 100_000, "2026-05-03", "Jon Watts", "Tom Holland", 9.1),
+                movie("The Dark Knight", "Mẫu dữ liệu fallback", "Action", 152, "https://picsum.photos/seed/darkknight/400/600", 105_000, "2026-04-20", "Christopher Nolan", "Christian Bale", 9.8)
+        );
+        movies.forEach(movieRepository::save);
+    }
+
+    private String normalizeDate(String value, DateTimeFormatter formatter) {
+        if (value == null || value.isBlank()) {
+            return LocalDate.now().toString();
+        }
+        try {
+            return LocalDate.parse(value.trim(), formatter).toString();
+        } catch (Exception ignored) {
+            return LocalDate.now().toString();
+        }
+    }
+
+    private String buildDescription(String title, String country, String sourceUrl) {
+        String c = (country == null || country.isBlank()) ? "Nhiều quốc gia" : country;
+        String source = (sourceUrl == null || sourceUrl.isBlank()) ? "" : " Nguồn: " + sourceUrl;
+        return "Phim " + title + " - dữ liệu mô phỏng từ CSV, quốc gia: " + c + "." + source;
+    }
+
+    private String readAny(CSVRecord row, String key) {
+        String bomKey = "\uFEFF" + key;
+        if (row.isMapped(key)) {
+            return row.get(key).trim();
+        }
+        if (row.isMapped(bomKey)) {
+            return row.get(bomKey).trim();
+        }
+        return "";
+    }
+
+    private String slugify(String text) {
+        if (text == null || text.isBlank()) {
+            return "movie";
+        }
+        return text.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-").replaceAll("(^-|-$)", "");
+    }
+}

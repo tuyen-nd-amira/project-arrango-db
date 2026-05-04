@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Đăng nhập / Đăng ký – CinemaBook</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/css/style.css" rel="stylesheet">
+</head>
+<body>
+  <div id="navbar-placeholder"></div>
+
+  <div class="container py-5">
+    <div class="row justify-content-center">
+      <div class="col-md-5">
+
+        <!-- Tab buttons -->
+        <div class="tab-header d-flex">
+          <button class="tab-btn active" id="tab-login-btn"   onclick="showTab('login')">🔑 Đăng nhập</button>
+          <button class="tab-btn"        id="tab-register-btn" onclick="showTab('register')">✨ Đăng ký</button>
+        </div>
+
+        <!-- Alert area -->
+        <div id="alert-area"></div>
+
+        <!-- Login Form -->
+        <div id="tab-login" class="form-custom">
+          <h4 class="fw-bold mb-4">Đăng nhập</h4>
+          <div class="mb-3">
+            <label class="form-label-custom">Email</label>
+            <input id="login-email" type="email" class="form-control-custom" placeholder="your@email.com">
+          </div>
+          <div class="mb-4">
+            <label class="form-label-custom">Mật khẩu</label>
+            <input id="login-password" type="password" class="form-control-custom" placeholder="••••••••">
+          </div>
+          <button class="btn-primary-custom w-100" onclick="doLogin()">Đăng nhập</button>
+          <p class="text-center text-muted mt-3" style="font-size:0.88rem">
+            Chưa có tài khoản?
+            <a href="#" style="color:#e50914" onclick="showTab('register')">Đăng ký ngay</a>
+          </p>
+        </div>
+
+        <!-- Register Form -->
+        <div id="tab-register" class="form-custom" style="display:none">
+          <h4 class="fw-bold mb-4">Tạo tài khoản</h4>
+          <div class="mb-3">
+            <label class="form-label-custom">Họ và tên</label>
+            <input id="reg-name" type="text" class="form-control-custom" placeholder="Nguyễn Văn A">
+          </div>
+          <div class="mb-3">
+            <label class="form-label-custom">Email</label>
+            <input id="reg-email" type="email" class="form-control-custom" placeholder="your@email.com">
+          </div>
+          <div class="mb-3">
+            <label class="form-label-custom">Số điện thoại</label>
+            <input id="reg-phone" type="tel" class="form-control-custom" placeholder="0912345678">
+          </div>
+          <div class="mb-4">
+            <label class="form-label-custom">Mật khẩu</label>
+            <input id="reg-password" type="password" class="form-control-custom" placeholder="Ít nhất 6 ký tự">
+          </div>
+          <button class="btn-primary-custom w-100" onclick="doRegister()">Tạo tài khoản</button>
+          <p class="text-center text-muted mt-3" style="font-size:0.88rem">
+            Đã có tài khoản?
+            <a href="#" style="color:#e50914" onclick="showTab('login')">Đăng nhập</a>
+          </p>
+        </div>
+
+        <!-- After login: show booking history -->
+        <div id="booking-history" class="mt-4" style="display:none">
+          <div class="section-title" style="font-size:1.2rem">📋 Lịch sử đặt vé</div>
+          <div id="history-list">
+            <div class="text-center py-3"><div class="spinner"></div></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div id="footer-placeholder"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="/js/api.js?v=20260504-jwt-fix"></script>
+  <script>
+    document.getElementById('navbar-placeholder').innerHTML = getNavbarHTML('');
+    document.getElementById('footer-placeholder').innerHTML = getFooterHTML();
+    renderNavUser();
+
+    // Check hash for direct register link
+    if (location.hash === '#register') showTab('register');
+
+    // Nếu đã đăng nhập: luôn đồng bộ user theo subject trong JWT để tránh lẫn tab/user.
+    (async function initAuthView() {
+      if (!getAccessToken() || isAccessTokenExpired()) {
+        clearCurrentUser();
+        return;
+      }
+
+      const authUserId = getAuthUserId();
+      if (!authUserId) {
+        clearCurrentUser();
+        return;
+      }
+
+      try {
+        const freshUser = await api.getUser(authUserId);
+        setCurrentUser(freshUser);
+        showLoggedIn(freshUser);
+      } catch (e) {
+        clearCurrentUser();
+      }
+    })();
+
+    function showTab(tab) {
+      document.getElementById('tab-login').style.display    = tab === 'login'    ? 'block' : 'none';
+      document.getElementById('tab-register').style.display = tab === 'register' ? 'block' : 'none';
+      document.getElementById('tab-login-btn').classList.toggle('active', tab === 'login');
+      document.getElementById('tab-register-btn').classList.toggle('active', tab === 'register');
+      clearAlert();
+    }
+
+    function showAlert(msg, isError = false) {
+      document.getElementById('alert-area').innerHTML =
+        `<div class="alert-custom ${isError ? 'alert-error' : 'alert-success'}">${msg}</div>`;
+    }
+    function clearAlert() {
+      document.getElementById('alert-area').innerHTML = '';
+    }
+
+    async function doLogin() {
+      const email    = document.getElementById('login-email').value.trim();
+      const password = document.getElementById('login-password').value;
+      if (!email || !password) { showAlert('Vui lòng nhập đầy đủ thông tin.', true); return; }
+      try {
+        const auth = await api.login({ email, password });
+        setAuthSession(auth);
+        const user = auth.user;
+        showAlert(`Chào mừng ${user.name}! Đang chuyển hướng...`);
+        renderNavUser();
+        setTimeout(() => {
+          const back = new URLSearchParams(location.search).get('back');
+          window.location.href = back || '/';
+        }, 1200);
+      } catch (e) {
+        showAlert(e.message, true);
+      }
+    }
+
+    async function doRegister() {
+      const name     = document.getElementById('reg-name').value.trim();
+      const email    = document.getElementById('reg-email').value.trim();
+      const phone    = document.getElementById('reg-phone').value.trim();
+      const password = document.getElementById('reg-password').value;
+      if (!name || !email || !password) { showAlert('Vui lòng nhập đầy đủ thông tin.', true); return; }
+      if (password.length < 6)          { showAlert('Mật khẩu phải ít nhất 6 ký tự.', true); return; }
+      try {
+        const auth = await api.register({ name, email, phone, password });
+        setAuthSession(auth);
+        const user = auth.user;
+        showAlert('Đăng ký thành công! Chào mừng ' + user.name);
+        renderNavUser();
+        setTimeout(() => window.location.href = '/', 1200);
+      } catch (e) {
+        showAlert(e.message, true);
+      }
+    }
+
+    function showLoggedIn(user) {
+      document.getElementById('tab-login').style.display    = 'none';
+      document.getElementById('tab-register').style.display = 'none';
+      document.getElementById('tab-login-btn').style.display    = 'none';
+      document.getElementById('tab-register-btn').style.display = 'none';
+
+      // Show profile card
+      const alertArea = document.getElementById('alert-area');
+      alertArea.innerHTML = `
+        <div class="form-custom text-center">
+          <div style="font-size:3rem">👤</div>
+          <h4 class="fw-bold mt-3">${user.name}</h4>
+          <div class="my-2">
+            <span class="rank-badge ${rankClass(user.memberRank)}">${rankLabel(user.memberRank)}</span>
+          </div>
+          <p class="text-muted small">${user.email}</p>
+          <p class="text-muted small">Tổng chi tiêu: <strong style="color:#f5c518">${formatVND(user.totalSpent || 0)}</strong></p>
+          <div class="d-flex gap-2 justify-content-center mt-3">
+            <a href="/movies.html" class="btn-primary-custom">🎬 Đặt vé ngay</a>
+            <button class="btn-outline-custom" onclick="logout()">Đăng xuất</button>
+          </div>
+        </div>`;
+
+      // Load booking history theo subject trong JWT (không tin user object cũ)
+      document.getElementById('booking-history').style.display = 'block';
+      loadHistory(getAuthUserId());
+    }
+
+    async function loadHistory(userId) {
+      const el = document.getElementById('history-list');
+      try {
+        const bookings = await api.getUserBookings(userId);
+        if (bookings.length === 0) {
+          el.innerHTML = '<p class="text-muted text-center">Chưa có lịch sử đặt vé.</p>';
+          return;
+        }
+        el.innerHTML = bookings.map(b => `
+          <div class="movie-card mb-3 p-3">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <div class="fw-bold">${b.movieTitle || 'N/A'}</div>
+                <small class="text-muted">📅 ${formatDateTime(b.showTime)}</small><br>
+                <small class="text-muted">💺 ${(b.seatLabels || []).join(', ')}</small>
+              </div>
+              <div class="text-end">
+                <div class="fw-bold" style="color:#e50914">${formatVND(b.totalAmount)}</div>
+                <span class="badge-genre" style="font-size:0.75rem">${b.status}</span>
+              </div>
+            </div>
+          </div>`).join('');
+      } catch (e) {
+        el.innerHTML = `<p class="text-danger">Lỗi: ${e.message}</p>`;
+      }
+    }
+  </script>
+</body>
+</html>
