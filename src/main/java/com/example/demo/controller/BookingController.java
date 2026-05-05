@@ -34,6 +34,19 @@ public class BookingController {
         return ResponseEntity.ok(bookingService.getUserBookings(userId));
     }
 
+    @GetMapping("/{bookingId}")
+    public ResponseEntity<?> getBookingDetail(@PathVariable String bookingId, HttpServletRequest request) {
+        String authUserId = (String) request.getAttribute("authUserId");
+        if (authUserId == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "Thiếu thông tin xác thực"));
+        }
+        try {
+            return ResponseEntity.ok(bookingService.getBookingByIdForUser(bookingId, authUserId));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     // ---- Đặt vé (có Transaction) ----
     @PostMapping
     public ResponseEntity<?> createBooking(@RequestBody BookingRequest request, HttpServletRequest httpRequest) {
@@ -49,6 +62,32 @@ public class BookingController {
 
             BookingResponse response = bookingService.createBooking(request);
             return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/{bookingId}/complete-payment")
+    public ResponseEntity<?> completePayment(@PathVariable String bookingId, HttpServletRequest request) {
+        String authUserId = (String) request.getAttribute("authUserId");
+        if (authUserId == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "Thiếu thông tin xác thực"));
+        }
+        try {
+            return ResponseEntity.ok(bookingService.completePayment(bookingId, authUserId));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/{bookingId}/cancel-holding")
+    public ResponseEntity<?> cancelHolding(@PathVariable String bookingId, HttpServletRequest request) {
+        String authUserId = (String) request.getAttribute("authUserId");
+        if (authUserId == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "Thiếu thông tin xác thực"));
+        }
+        try {
+            return ResponseEntity.ok(bookingService.cancelHolding(bookingId, authUserId));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }

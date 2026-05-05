@@ -57,6 +57,17 @@ public class BookingService {
         return bookingRepository.findByUserId(userId);
     }
 
+    public Booking getBookingByIdForUser(String bookingId, String userId) {
+        Booking booking = bookingRepository.findByKey(bookingId);
+        if (booking == null) {
+            throw new RuntimeException("Không tìm thấy booking");
+        }
+        if (booking.getUserId() == null || !booking.getUserId().equals(userId)) {
+            throw new RuntimeException("Không có quyền truy cập booking này");
+        }
+        return booking;
+    }
+
     public BookingResponse createBooking(BookingRequest request) {
         validateCreateBookingRequest(request);
 
@@ -79,19 +90,63 @@ public class BookingService {
             Booking saved = txResult.booking;
             log.info("[TRANSACTION] Booking created by server-side function – bookingId: {}", saved.getKey());
 
-            // Trigger mô phỏng AFTER UPDATE để cập nhật rank sau khi tx hoàn tất.
-            userService.updateMemberRankTrigger(request.getUserId());
-
-            User updatedUser = userRepository.findByKey(request.getUserId());
-            return new BookingResponse(saved, updatedUser, "Đặt vé thành công! Chúc bạn xem phim vui vẻ 🎬");
+            return new BookingResponse(saved, null, "Giữ vé thành công! Vui lòng hoàn tất thanh toán trong 5 phút.");
 
         } catch (Exception e) {
             throw new RuntimeException("Đặt vé thất bại: " + rootMessage(e), e);
         }
     }
 
+    public BookingResponse completePayment(String bookingId, String userId) {
+        if (bookingId == null || bookingId.isBlank()) {
+            throw new RuntimeException("Thiếu bookingId");
+        }
+        if (userId == null || userId.isBlank()) {
+            throw new RuntimeException("Thiếu userId");
+        }
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("bookingId", bookingId);
+        payload.put("userId", userId);
+
+        try {
+            BookingTxResult txResult = callBookingFoxxService("/complete-payment", payload);
+            if (txResult == null || txResult.booking == null) {
+                throw new RuntimeException("Kết quả transaction không hợp lệ");
+            }
+
+            userService.updateMemberRankTrigger(userId);
+            User updatedUser = userRepository.findByKey(userId);
+            return new BookingResponse(txResult.booking, updatedUser, "Thanh toán thành công! Đặt vé đã được xác nhận.");
+        } catch (Exception e) {
+            throw new RuntimeException("Thanh toán thất bại: " + rootMessage(e), e);
+        }
+    }
+
+    public BookingResponse cancelHolding(String bookingId, String userId) {
+        if (bookingId == null || bookingId.isBlank()) {
+            throw new RuntimeException("Thiếu bookingId");
+        }
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("bookingId", bookingId);
+        payload.put("userId", userId);
+        try {
+            BookingTxResult txResult = callBookingFoxxService("/cancel-holding", payload);
+            if (txResult == null || txResult.booking == null) {
+                throw new RuntimeException("Kết quả không hợp lệ");
+            }
+            return new BookingResponse(txResult.booking, null, "Đã hủy giữ vé thành công. Ghế đã được mở lại.");
+        } catch (Exception e) {
+            throw new RuntimeException("Hủy giữ vé thất bại: " + rootMessage(e), e);
+        }
+    }
+
     private BookingTxResult callBookingFoxxService(Map<String, Object> payload) throws Exception {
-        String endpoint = buildFoxxEndpoint("/create-booking");
+        return callBookingFoxxService("/create-booking", payload);
+    }
+
+    private BookingTxResult callBookingFoxxService(String path, Map<String, Object> payload) throws Exception {
+        String endpoint = buildFoxxEndpoint(path);
         String requestBody = objectMapper.writeValueAsString(payload);
 
         HttpRequest request = HttpRequest.newBuilder()

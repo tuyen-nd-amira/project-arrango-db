@@ -85,8 +85,28 @@ function registerBookingTransactionProcedure() {
             throw new Error('Ghe khong thuoc phong chieu cua suat nay: ' + seatKey);
           }
 
+          var expiredEdges = db._query(
+            'FOR e IN booking_seats ' +
+            'FILTER e._to == @seatId AND e.screening_key == @sid AND e.booking_status == "holding" ' +
+            'FILTER e.hold_expires_at != null AND DATE_TIMESTAMP(e.hold_expires_at) <= DATE_NOW() ' +
+            'RETURN { edgeKey: e._key, bookingKey: PARSE_IDENTIFIER(e._from).key }',
+            { seatId: seat._id, sid: params.screeningId }
+          ).toArray();
+          for (var x = 0; x < expiredEdges.length; x++) {
+            var item = expiredEdges[x];
+            db.booking_seats.remove(item.edgeKey);
+            db._query(
+              'FOR b IN bookings FILTER b._key == @key AND b.status == "holding" ' +
+              'UPDATE b WITH { status: "cancelled", cancelled_at: DATE_ISO8601(DATE_NOW()), cancel_reason: "hold_expired" } IN bookings',
+              { key: item.bookingKey }
+            );
+          }
+
           var occupied = db._query(
-            'FOR e IN booking_seats FILTER e._to == @seatId AND e.screening_key == @sid AND e.booking_status == "confirmed" LIMIT 1 RETURN 1',
+            'FOR e IN booking_seats FILTER e._to == @seatId AND e.screening_key == @sid AND (' +
+            '  e.booking_status == "confirmed" OR ' +
+            '  (e.booking_status == "holding" AND e.hold_expires_at != null AND DATE_TIMESTAMP(e.hold_expires_at) > DATE_NOW())' +
+            ') LIMIT 1 RETURN 1',
             { seatId: 'seats/' + seatKey, sid: params.screeningId }
           ).toArray().length > 0;
 
@@ -107,6 +127,7 @@ function registerBookingTransactionProcedure() {
         var totalAmount = Number(screening.price || 0) * selectedSeats.length;
         var bookingCode = params.bookingCode || ('BK' + Date.now());
         var createdAt = params.createdAt || new Date().toISOString();
+        var holdExpiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
         var bookingDoc = {
           booking_code: bookingCode,
@@ -116,8 +137,9 @@ function registerBookingTransactionProcedure() {
           seat_keys: params.seatKeys,
           seat_labels: selectedSeats.map(function(s) { return s.seat_label; }),
           total_amount: totalAmount,
-          status: 'confirmed',
+          status: 'holding',
           created_at: createdAt,
+          hold_expires_at: holdExpiresAt,
           movie_title: movie ? (movie.title || '') : '',
           show_time: screening.start_time || '',
           cinema_name: room ? (room.name || '') : ''
@@ -130,13 +152,11 @@ function registerBookingTransactionProcedure() {
             _from: 'bookings/' + bookingMeta._key,
             _to: 'seats/' + params.seatKeys[j],
             screening_key: params.screeningId,
-            booking_status: 'confirmed',
-            created_at: createdAt
+            booking_status: 'holding',
+            created_at: createdAt,
+            hold_expires_at: holdExpiresAt
           });
         }
-
-        var updatedTotalSpent = Number(user.totalSpent || 0) + totalAmount;
-        db.users.update(params.userId, { totalSpent: updatedTotalSpent });
 
         db.audit_logs.save({
           action: 'create_booking',
@@ -160,13 +180,13 @@ function registerBookingTransactionProcedure() {
             seatKeys: params.seatKeys,
             seatLabels: selectedSeats.map(function(s) { return s.seat_label; }),
             totalAmount: totalAmount,
-            status: 'confirmed',
+            status: 'holding',
             createdAt: createdAt,
+            holdExpiresAt: holdExpiresAt,
             movieTitle: movie ? (movie.title || '') : '',
             showTime: screening.start_time || '',
             cinemaName: room ? (room.name || '') : ''
-          },
-          userTotalSpent: updatedTotalSpent
+          }
         };
       }
     });

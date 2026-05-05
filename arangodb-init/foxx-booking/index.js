@@ -5,6 +5,7 @@ const createRouter = require('@arangodb/foxx/router');
 
 const router = createRouter();
 module.context.use(router);
+const HOLD_MINUTES = 5;
 
 router.post('/create-booking', function (req, res) {
   const payload = req.body || {};
@@ -79,8 +80,29 @@ router.post('/create-booking', function (req, res) {
             throw new Error('Ghe khong thuoc phong chieu cua suat nay: ' + seatKey);
           }
 
+          const expiredEdges = db._query(
+            'FOR e IN booking_seats ' +
+            'FILTER e._to == @seatId AND e.screening_key == @sid AND e.booking_status == "holding" ' +
+            'FILTER e.hold_expires_at != null AND DATE_TIMESTAMP(e.hold_expires_at) <= DATE_NOW() ' +
+            'RETURN { edgeKey: e._key, bookingKey: PARSE_IDENTIFIER(e._from).key }',
+            { seatId: seat._id, sid: params.screeningId }
+          ).toArray();
+
+          for (let x = 0; x < expiredEdges.length; x++) {
+            const item = expiredEdges[x];
+            db.booking_seats.remove(item.edgeKey);
+            db._query(
+              'FOR b IN bookings FILTER b._key == @key AND b.status == "holding" ' +
+              'UPDATE b WITH { status: "cancelled", cancelled_at: DATE_ISO8601(DATE_NOW()), cancel_reason: "hold_expired" } IN bookings',
+              { key: item.bookingKey }
+            );
+          }
+
           const occupied = db._query(
-            'FOR e IN booking_seats FILTER e._to == @seatId AND e.screening_key == @sid AND e.booking_status == "confirmed" LIMIT 1 RETURN 1',
+            'FOR e IN booking_seats FILTER e._to == @seatId AND e.screening_key == @sid AND (' +
+            '  e.booking_status == "confirmed" OR ' +
+            '  (e.booking_status == "holding" AND e.hold_expires_at != null AND DATE_TIMESTAMP(e.hold_expires_at) > DATE_NOW())' +
+            ') LIMIT 1 RETURN 1',
             { seatId: 'seats/' + seatKey, sid: params.screeningId }
           ).toArray().length > 0;
 
@@ -100,6 +122,7 @@ router.post('/create-booking', function (req, res) {
         const totalAmount = Number(screening.price || 0) * selectedSeats.length;
         const bookingCode = params.bookingCode || ('BK' + Date.now());
         const createdAt = params.createdAt || new Date().toISOString();
+        const holdExpiresAt = new Date(Date.now() + HOLD_MINUTES * 60 * 1000).toISOString();
 
         const bookingDoc = {
           booking_code: bookingCode,
@@ -109,8 +132,9 @@ router.post('/create-booking', function (req, res) {
           seat_keys: params.seatKeys,
           seat_labels: selectedSeats.map(function (s) { return s.seat_label; }),
           total_amount: totalAmount,
-          status: 'confirmed',
+          status: 'holding',
           created_at: createdAt,
+          hold_expires_at: holdExpiresAt,
           movie_title: movie ? (movie.title || '') : '',
           show_time: screening.start_time || '',
           cinema_name: room ? (room.name || '') : ''
@@ -123,15 +147,11 @@ router.post('/create-booking', function (req, res) {
             _from: 'bookings/' + bookingMeta._key,
             _to: 'seats/' + params.seatKeys[j],
             screening_key: params.screeningId,
-            booking_status: 'confirmed',
-            created_at: createdAt
+            booking_status: 'holding',
+            created_at: createdAt,
+            hold_expires_at: holdExpiresAt
           });
         }
-
-        db._query(
-          'FOR u IN users FILTER u._key == @uid UPDATE u WITH { totalSpent: TO_NUMBER(u.totalSpent) + @amount } IN users',
-          { uid: params.userId, amount: totalAmount }
-        );
 
         db.audit_logs.save({
           action: 'create_booking',
@@ -155,8 +175,9 @@ router.post('/create-booking', function (req, res) {
             seatKeys: params.seatKeys,
             seatLabels: selectedSeats.map(function (s) { return s.seat_label; }),
             totalAmount: totalAmount,
-            status: 'confirmed',
+            status: 'holding',
             createdAt: createdAt,
+            holdExpiresAt: holdExpiresAt,
             movieTitle: movie ? (movie.title || '') : '',
             showTime: screening.start_time || '',
             cinemaName: room ? (room.name || '') : ''
@@ -174,3 +195,237 @@ router.post('/create-booking', function (req, res) {
 })
 .body(['application/json'], 'Booking payload')
 .response(['application/json'], 'Booking result');
+
+router.post('/complete-payment', function (req, res) {
+  const payload = req.body || {};
+
+  if (!payload.bookingId || !payload.userId) {
+    res.status(400);
+    res.send({ error: 'Payload thanh toan khong hop le' });
+    return;
+  }
+
+  try {
+    const result = db._executeTransaction({
+      collections: {
+        read: ['bookings', 'users'],
+        write: ['bookings', 'booking_seats', 'users', 'audit_logs']
+      },
+      params: payload,
+      action: function (params) {
+        const db = require('@arangodb').db;
+
+        let booking;
+        try {
+          booking = db.bookings.document(params.bookingId);
+        } catch (e) {
+          throw new Error('Booking khong ton tai');
+        }
+
+        if (booking.user_key !== params.userId) {
+          throw new Error('Khong co quyen thanh toan booking nay');
+        }
+
+        if (booking.status === 'confirmed') {
+          return {
+            booking: {
+              _key: booking._key,
+              _id: booking._id,
+              userId: booking.user_key,
+              screeningId: booking.screening_key,
+              movieId: booking.movie_key,
+              bookingCode: booking.booking_code,
+              seatKeys: booking.seat_keys || [],
+              seatLabels: booking.seat_labels || [],
+              totalAmount: Number(booking.total_amount || 0),
+              status: booking.status,
+              createdAt: booking.created_at,
+              holdExpiresAt: booking.hold_expires_at || null,
+              movieTitle: booking.movie_title || '',
+              showTime: booking.show_time || '',
+              cinemaName: booking.cinema_name || ''
+            }
+          };
+        }
+
+        if (booking.status !== 'holding') {
+          throw new Error('Booking khong o trang thai giu cho de thanh toan');
+        }
+
+        const nowTs = Date.now();
+        const holdTs = booking.hold_expires_at ? Date.parse(booking.hold_expires_at) : 0;
+        if (!holdTs || holdTs <= nowTs) {
+          db._query(
+            'FOR e IN booking_seats FILTER e._from == @fromId REMOVE e IN booking_seats',
+            { fromId: booking._id }
+          );
+          db.bookings.update(booking._key, {
+            status: 'cancelled',
+            cancelled_at: new Date(nowTs).toISOString(),
+            cancel_reason: 'hold_expired'
+          });
+          throw new Error('Giu cho da het han, vui long dat lai');
+        }
+
+        db.bookings.update(booking._key, {
+          status: 'confirmed',
+          confirmed_at: new Date(nowTs).toISOString(),
+          hold_expires_at: null
+        });
+
+        db._query(
+          'FOR e IN booking_seats FILTER e._from == @fromId ' +
+          'UPDATE e WITH { booking_status: "confirmed", hold_expires_at: null, confirmed_at: DATE_ISO8601(DATE_NOW()) } IN booking_seats',
+          { fromId: booking._id }
+        );
+
+        db._query(
+          'FOR u IN users FILTER u._key == @uid UPDATE u WITH { totalSpent: TO_NUMBER(u.totalSpent) + @amount } IN users',
+          { uid: params.userId, amount: Number(booking.total_amount || 0) }
+        );
+
+        db.audit_logs.save({
+          action: 'complete_payment',
+          entity_key: booking._key,
+          payload: {
+            bookingCode: booking.booking_code,
+            userKey: params.userId,
+            amount: Number(booking.total_amount || 0)
+          },
+          created_at: new Date(nowTs).toISOString()
+        });
+
+        return {
+          booking: {
+            _key: booking._key,
+            _id: booking._id,
+            userId: booking.user_key,
+            screeningId: booking.screening_key,
+            movieId: booking.movie_key,
+            bookingCode: booking.booking_code,
+            seatKeys: booking.seat_keys || [],
+            seatLabels: booking.seat_labels || [],
+            totalAmount: Number(booking.total_amount || 0),
+            status: 'confirmed',
+            createdAt: booking.created_at,
+            holdExpiresAt: null,
+            movieTitle: booking.movie_title || '',
+            showTime: booking.show_time || '',
+            cinemaName: booking.cinema_name || ''
+          }
+        };
+      }
+    });
+
+    res.status(200);
+    res.send(result);
+  } catch (error) {
+    res.status(400);
+    res.send({ error: error.message || 'Thanh toan that bai' });
+  }
+})
+.body(['application/json'], 'Payment payload')
+.response(['application/json'], 'Payment result');
+
+router.post('/cancel-holding', function (req, res) {
+  const payload = req.body || {};
+
+  if (!payload.bookingId || !payload.userId) {
+    res.status(400);
+    res.send({ error: 'Payload huy giu cho khong hop le' });
+    return;
+  }
+
+  try {
+    const result = db._executeTransaction({
+      collections: {
+        read: ['bookings'],
+        write: ['bookings', 'booking_seats', 'audit_logs']
+      },
+      params: payload,
+      action: function (params) {
+        const db = require('@arangodb').db;
+
+        let booking;
+        try {
+          booking = db.bookings.document(params.bookingId);
+        } catch (e) {
+          throw new Error('Booking khong ton tai');
+        }
+
+        if (booking.user_key !== params.userId) {
+          throw new Error('Khong co quyen huy booking nay');
+        }
+
+        if (booking.status === 'confirmed') {
+          throw new Error('Khong the huy booking da thanh toan');
+        }
+
+        if (booking.status === 'cancelled') {
+          return {
+            booking: {
+              _key: booking._key,
+              _id: booking._id,
+              userId: booking.user_key,
+              bookingCode: booking.booking_code,
+              status: 'cancelled',
+              movieTitle: booking.movie_title || '',
+              showTime: booking.show_time || '',
+              cinemaName: booking.cinema_name || '',
+              seatLabels: booking.seat_labels || [],
+              totalAmount: Number(booking.total_amount || 0),
+              createdAt: booking.created_at,
+              holdExpiresAt: null
+            }
+          };
+        }
+
+        const nowTs = Date.now();
+
+        db._query(
+          'FOR e IN booking_seats FILTER e._from == @fromId REMOVE e IN booking_seats',
+          { fromId: booking._id }
+        );
+
+        db.bookings.update(booking._key, {
+          status: 'cancelled',
+          cancelled_at: new Date(nowTs).toISOString(),
+          cancel_reason: 'user_cancelled',
+          hold_expires_at: null
+        });
+
+        db.audit_logs.save({
+          action: 'cancel_holding',
+          entity_key: booking._key,
+          payload: { bookingCode: booking.booking_code, userKey: params.userId },
+          created_at: new Date(nowTs).toISOString()
+        });
+
+        return {
+          booking: {
+            _key: booking._key,
+            _id: booking._id,
+            userId: booking.user_key,
+            bookingCode: booking.booking_code,
+            status: 'cancelled',
+            movieTitle: booking.movie_title || '',
+            showTime: booking.show_time || '',
+            cinemaName: booking.cinema_name || '',
+            seatLabels: booking.seat_labels || [],
+            totalAmount: Number(booking.total_amount || 0),
+            createdAt: booking.created_at,
+            holdExpiresAt: null
+          }
+        };
+      }
+    });
+
+    res.status(200);
+    res.send(result);
+  } catch (error) {
+    res.status(400);
+    res.send({ error: error.message || 'Huy giu cho that bai' });
+  }
+})
+.body(['application/json'], 'Cancel holding payload')
+.response(['application/json'], 'Cancel result');

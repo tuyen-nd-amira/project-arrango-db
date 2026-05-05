@@ -185,6 +185,9 @@ const api = {
   // Bookings
   createBooking:     (body)   => apiFetch('/bookings', { method: 'POST', body: JSON.stringify(body) }),
   getUserBookings:   (userId) => apiFetch(`/bookings/user/${userId}`),
+  getBookingById:    (id)     => apiFetch(`/bookings/${id}`),
+  completePayment:   (id)     => apiFetch(`/bookings/${id}/complete-payment`, { method: 'POST' }),
+  cancelHolding:     (id)     => apiFetch(`/bookings/${id}/cancel-holding`, { method: 'POST' }),
 
   // Users
   register: (body) => apiFetch('/users/register', { method: 'POST', body: JSON.stringify(body) }),

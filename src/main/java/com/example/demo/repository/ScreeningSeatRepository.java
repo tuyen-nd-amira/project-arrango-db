@@ -29,7 +29,10 @@ public class ScreeningSeatRepository {
             "FILTER s.room_key == screening.room_key " +
             "LET edge = FIRST(" +
             "  FOR e IN booking_seats " +
-            "  FILTER e._to == s._id AND e.screening_key == @sid AND e.booking_status == 'confirmed' " +
+            "  FILTER e._to == s._id AND e.screening_key == @sid AND (" +
+            "    e.booking_status == 'confirmed' OR " +
+            "    (e.booking_status == 'holding' AND e.hold_expires_at != null AND DATE_TIMESTAMP(e.hold_expires_at) > DATE_NOW())" +
+            "  ) " +
             "  LIMIT 1 RETURN e" +
             ") " +
             "SORT s.seat_row ASC, s.seat_number ASC " +
@@ -102,7 +105,10 @@ public class ScreeningSeatRepository {
             "FILTER s.room_key == screening.room_key " +
             "LET occupied = LENGTH(" +
             "  FOR e IN booking_seats " +
-            "  FILTER e._to == s._id AND e.screening_key == @sid AND e.booking_status == 'confirmed' " +
+            "  FILTER e._to == s._id AND e.screening_key == @sid AND (" +
+            "    e.booking_status == 'confirmed' OR " +
+            "    (e.booking_status == 'holding' AND e.hold_expires_at != null AND DATE_TIMESTAMP(e.hold_expires_at) > DATE_NOW())" +
+            "  ) " +
             "  LIMIT 1 RETURN 1" +
             ") " +
             "FILTER occupied == 0 " +
@@ -119,7 +125,10 @@ public class ScreeningSeatRepository {
             "LET seat = DOCUMENT('seats', @seatKey) " +
             "RETURN LENGTH(" +
             "  FOR e IN booking_seats " +
-            "  FILTER e._to == seat._id AND e.screening_key == @sid AND e.booking_status == 'confirmed' " +
+            "  FILTER e._to == seat._id AND e.screening_key == @sid AND (" +
+            "    e.booking_status == 'confirmed' OR " +
+            "    (e.booking_status == 'holding' AND e.hold_expires_at != null AND DATE_TIMESTAMP(e.hold_expires_at) > DATE_NOW())" +
+            "  ) " +
             "  LIMIT 1 RETURN 1" +
             ") > 0";
         Map<String, Object> bind = new HashMap<>();

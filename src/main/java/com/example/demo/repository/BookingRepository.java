@@ -42,8 +42,9 @@ public class BookingRepository {
             "RETURN { " +
             "  _key: b._key, _id: b._id, " +
             "  userId: b.user_key, screeningId: b.screening_key, movieId: b.movie_key, " +
+            "  bookingCode: b.booking_code, " +
             "  seatKeys: b.seat_keys, seatLabels: b.seat_labels, " +
-            "  totalAmount: b.total_amount, status: b.status, createdAt: b.created_at, " +
+            "  totalAmount: b.total_amount, status: b.status, createdAt: b.created_at, holdExpiresAt: b.hold_expires_at, " +
             "  movieTitle: b.movie_title, showTime: b.show_time, cinemaName: b.cinema_name " +
             "}";
         Map<String, Object> bind = new HashMap<>();
@@ -58,8 +59,9 @@ public class BookingRepository {
             "RETURN { " +
             "  _key: b._key, _id: b._id, " +
             "  userId: b.user_key, screeningId: b.screening_key, movieId: b.movie_key, " +
+            "  bookingCode: b.booking_code, " +
             "  seatKeys: b.seat_keys, seatLabels: b.seat_labels, " +
-            "  totalAmount: b.total_amount, status: b.status, createdAt: b.created_at, " +
+            "  totalAmount: b.total_amount, status: b.status, createdAt: b.created_at, holdExpiresAt: b.hold_expires_at, " +
             "  movieTitle: b.movie_title, showTime: b.show_time, cinemaName: b.cinema_name " +
             "}";
         Map<String, Object> bind = new HashMap<>();

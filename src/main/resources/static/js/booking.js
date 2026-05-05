@@ -65,7 +65,7 @@ function buildPageHTML(movie, screenings) {
       <div class="movie-card booking-movie-hero mb-4">
         <div class="booking-movie-poster-wrap">
           <img class="booking-movie-poster" src="${moviePoster(movie)}" alt="${movie.title}"
-               onerror="this.src='https://picsum.photos/seed/${movie._key}/360/520'">
+           onerror="this.src='https://picsum.photos/seed/${movie._key}/420/630'">
         </div>
         <div class="booking-movie-content p-4 flex-grow-1">
           <h3 class="fw-bold mb-1">${movie.title}</h3>
@@ -135,7 +135,7 @@ function buildPageHTML(movie, screenings) {
 
         <button class="btn-primary-custom w-100" id="confirm-btn" disabled
                 onclick="confirmBooking()">
-          ✅ Xác nhận đặt vé
+          ✅ Giữ vé và đi tới thanh toán
         </button>
         <div class="mt-2 text-center">
           <small class="text-muted">Bạn chưa đăng nhập? <a href="/login.html" style="color:#e50914">Đăng nhập</a></small>
@@ -310,30 +310,15 @@ async function confirmBooking() {
       screeningId: currentScreeningId,
       seatKeys:    selectedSeats.map(s => s.key)
     });
-
-    // Update stored user (rank may have changed)
-    if (result.user) setCurrentUser(result.user);
-
-    // Show success modal
-    document.getElementById('modal-message').textContent =
-      `Đã đặt ${selectedSeats.length} ghế: ${selectedSeats.map(s => s.label).join(', ')}`;
-
-    const oldRank = user.memberRank || user.role || 'user';
-    const newRank = result.user ? (result.user.memberRank || result.user.role || 'user') : oldRank;
-    if (result.user && newRank !== oldRank) {
-      const rankEl = document.getElementById('modal-new-rank');
-      rankEl.className = `rank-badge ${rankClass(newRank)}`;
-      rankEl.textContent = rankLabel(newRank);
-      document.getElementById('modal-rank-update').style.display = 'block';
+    const bookingId = result && result.booking ? result.booking._key : null;
+    if (!bookingId) {
+      throw new Error('Không nhận được mã booking từ hệ thống');
     }
-
-    const modal = document.getElementById('success-modal');
-    modal.style.display = 'flex';
-    renderNavUser();
+    window.location.href = `/payment.html?bookingId=${encodeURIComponent(bookingId)}`;
 
   } catch (e) {
     btn.disabled = false;
-    btn.textContent = '✅ Xác nhận đặt vé';
+    btn.textContent = '✅ Giữ vé và đi tới thanh toán';
     alert('Đặt vé thất bại: ' + e.message);
   }
 }

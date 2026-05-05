@@ -26,8 +26,9 @@ public class Booking {
     private List<String> seatKeys;
     private List<String> seatLabels;
     private double totalAmount;
-    private String status;      // "confirmed" | "cancelled"
+    private String status;      // "holding" | "confirmed" | "cancelled"
     private String createdAt;
+    private String holdExpiresAt;
 
     // Denormalized fields (snapshot at booking time)
     private String movieTitle;

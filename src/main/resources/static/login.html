@@ -208,8 +208,22 @@
           el.innerHTML = '<p class="text-muted text-center">Chưa có lịch sử đặt vé.</p>';
           return;
         }
-        el.innerHTML = bookings.map(b => `
-          <div class="movie-card mb-3 p-3">
+        el.innerHTML = bookings.map(b => {
+          const isHolding = b.status === 'holding';
+          const statusColor = isHolding ? '#f59e0b' : (b.status === 'confirmed' ? '#27ae60' : '#6b7280');
+          const holdingActions = isHolding ? `
+            <div class="d-flex gap-2 mt-2 justify-content-end">
+              <a href="/payment.html?bookingId=${b._key}"
+                 class="btn-primary-custom"
+                 style="font-size:0.78rem;padding:5px 10px">💳 Tiếp tục thanh toán</a>
+              <button onclick="cancelHoldingFromHistory('${b._key}', this)"
+                      class="btn-outline-custom"
+                      style="font-size:0.78rem;padding:5px 10px;border-color:#e50914;color:#e50914">
+                ❌ Hủy giữ vé
+              </button>
+            </div>` : '';
+          return `
+          <div class="movie-card mb-3 p-3" id="booking-card-${b._key}">
             <div class="d-flex justify-content-between align-items-start">
               <div>
                 <div class="fw-bold">${b.movieTitle || 'N/A'}</div>
@@ -218,12 +232,34 @@
               </div>
               <div class="text-end">
                 <div class="fw-bold" style="color:#e50914">${formatVND(b.totalAmount)}</div>
-                <span class="badge-genre" style="font-size:0.75rem">${b.status}</span>
+                <span class="badge-genre" style="font-size:0.75rem;color:${statusColor};border-color:${statusColor}">${b.status}</span>
               </div>
             </div>
-          </div>`).join('');
+            ${holdingActions}
+          </div>`;
+        }).join('');
       } catch (e) {
         el.innerHTML = `<p class="text-danger">Lỗi: ${e.message}</p>`;
+      }
+    }
+    async function cancelHoldingFromHistory(bookingId, btn) {
+      if (!confirm('Bạn có chắc muốn hủy giữ vé? Ghế sẽ được mở lại cho người khác.')) return;
+      btn.disabled = true;
+      btn.textContent = 'Đang hủy...';
+      try {
+        await api.cancelHolding(bookingId);
+        const card = document.getElementById('booking-card-' + bookingId);
+        if (card) {
+          card.querySelector('.badge-genre').textContent = 'cancelled';
+          card.querySelector('.badge-genre').style.color = '#6b7280';
+          card.querySelector('.badge-genre').style.borderColor = '#6b7280';
+          const actions = card.querySelector('.d-flex.gap-2.mt-2');
+          if (actions) actions.remove();
+        }
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = '❌ Hủy giữ vé';
+        alert(e.message || 'Hủy thất bại');
       }
     }
   </script>
