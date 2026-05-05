@@ -10,6 +10,8 @@ arangodb:
   database: ${ARANGO_DATABASE:cinema_db}
   user: ${ARANGO_USER:root}
   password: ${ARANGO_PASSWORD:123456}
+  foxx:
+    service-mount: ${ARANGO_FOXX_SERVICE_MOUNT:/booking-tx}
 
 app:
   seed:
@@ -22,4 +24,5 @@ jwt:
 
 gemini:
   api-key: ${GEMINI_API_KEY:}
+  base-url: ${GEMINI_BASE_URL:https://api.shopaikey.com}
   model: ${GEMINI_MODEL:gemini-2.5-flash}

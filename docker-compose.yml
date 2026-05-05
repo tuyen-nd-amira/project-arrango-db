@@ -6,10 +6,12 @@ services:
     container_name: cinema_arangodb
     environment:
       ARANGO_ROOT_PASSWORD: ${ARANGO_PASSWORD:-123456}
+      ARANGO_DATABASE: ${ARANGO_DATABASE:-cinema_db}
     ports:
       - "8529:8529"
     volumes:
       - arangodb_data:/var/lib/arangodb3
+      - ./arangodb-init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD", "arangosh", "--server.endpoint", "http+tcp://127.0.0.1:8529", "--server.username", "root", "--server.password", "${ARANGO_PASSWORD:-123456}", "--javascript.execute-string", "db._version()"]
       interval: 10s
@@ -17,6 +19,26 @@ services:
       retries: 10
       start_period: 20s
     restart: unless-stopped
+
+  # ── ArangoDB Foxx Init (runs every compose up) ──────────────
+  arangodb_init:
+    image: arangodb:3.12
+    container_name: cinema_arangodb_init
+    depends_on:
+      arangodb:
+        condition: service_healthy
+    environment:
+      ARANGO_DATABASE: ${ARANGO_DATABASE:-cinema_db}
+      ARANGO_PASSWORD: ${ARANGO_PASSWORD:-123456}
+    command: >
+      arangosh
+      --server.endpoint http+tcp://arangodb:8529
+      --server.username root
+      --server.password ${ARANGO_PASSWORD:-123456}
+      --javascript.execute /docker-entrypoint-initdb.d/20-install-booking-foxx.js
+    volumes:
+      - ./arangodb-init:/docker-entrypoint-initdb.d
+    restart: "no"
 
   # ── Spring Boot App ──────────────────────────────────────────
   app:
@@ -32,15 +54,19 @@ services:
       ARANGO_DATABASE: ${ARANGO_DATABASE:-cinema_db}
       ARANGO_USER: ${ARANGO_USER:-root}
       ARANGO_PASSWORD: ${ARANGO_PASSWORD:-123456}
+      ARANGO_FOXX_SERVICE_MOUNT: ${ARANGO_FOXX_SERVICE_MOUNT:-/booking-tx}
       APP_SEED_MODE: ${APP_SEED_MODE:-reset}
       APP_SEED_RESET_USERS: ${APP_SEED_RESET_USERS:-false}
       JWT_SECRET: ${JWT_SECRET:-CinemaBookSuperSecretKeyForJwtAccessToken_2026_ChangeThis}
       JWT_ACCESS_TTL_SECONDS: ${JWT_ACCESS_TTL_SECONDS:-2592000}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_BASE_URL: ${GEMINI_BASE_URL:-https://api.shopaikey.com}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
     depends_on:
       arangodb:
         condition: service_healthy
+      arangodb_init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:

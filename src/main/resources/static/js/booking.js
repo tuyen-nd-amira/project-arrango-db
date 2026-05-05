@@ -350,7 +350,7 @@ async function loadAiReview() {
 
   try {
     const data = await api.getAiMovieReview(currentMovie._key);
-    const sourceLabel = data.source === 'gemini' ? 'Gemini' : 'Fallback';
+    const sourceLabel = data.source === 'fallback' ? 'Fallback' : 'Gemini';
     box.innerHTML = `
       <div style="color:#111827;white-space:pre-wrap">${escapeHtml(data.review || 'Không có nội dung review')}</div>
       <div class="text-muted mt-2" style="font-size:0.78rem">Nguồn: ${sourceLabel} (${data.model || 'N/A'})</div>

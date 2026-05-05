@@ -1,0 +1,9 @@
+{
+  "name": "booking-transaction-service",
+  "version": "1.0.0",
+  "license": "MIT",
+  "main": "index.js",
+  "engines": {
+    "arangodb": "^3.12.0"
+  }
+}
