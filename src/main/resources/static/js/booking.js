@@ -62,11 +62,12 @@ function buildPageHTML(movie, screenings) {
     <div class="col-lg-8">
 
       <!-- Movie info -->
-      <div class="movie-card mb-4" style="flex-direction:row;display:flex;overflow:hidden">
-        <img src="${moviePoster(movie)}" alt="${movie.title}"
-             style="width:130px;object-fit:cover;flex-shrink:0"
-             onerror="this.src='https://picsum.photos/seed/${movie._key}/130/195'">
-        <div class="p-4 flex-grow-1">
+      <div class="movie-card booking-movie-hero mb-4">
+        <div class="booking-movie-poster-wrap">
+          <img class="booking-movie-poster" src="${moviePoster(movie)}" alt="${movie.title}"
+               onerror="this.src='https://picsum.photos/seed/${movie._key}/360/520'">
+        </div>
+        <div class="booking-movie-content p-4 flex-grow-1">
           <h3 class="fw-bold mb-1">${movie.title}</h3>
           <div class="d-flex flex-wrap gap-2 mb-2">
             <span class="text-muted small">⏱ ${formatDuration(movie.duration)}</span>
