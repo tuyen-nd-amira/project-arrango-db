@@ -5,19 +5,24 @@ services:
     image: arangodb:3.12
     container_name: cinema_arangodb
     environment:
+      ARANGODB_DEFAULT_ROOT_PASSWORD: ${ARANGO_PASSWORD:-123456}
       ARANGO_ROOT_PASSWORD: ${ARANGO_PASSWORD:-123456}
-      ARANGO_DATABASE: ${ARANGO_DATABASE:-cinema_db}
+    command: >
+      arangodb
+      --starter.local
+      --all.log.level=warning
     ports:
+      - "8528:8528"
       - "8529:8529"
     volumes:
-      - arangodb_data:/var/lib/arangodb3
+      - arangodb_data:/data
       - ./arangodb-init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD", "arangosh", "--server.endpoint", "http+tcp://127.0.0.1:8529", "--server.username", "root", "--server.password", "${ARANGO_PASSWORD:-123456}", "--javascript.execute-string", "db._version()"]
+      test: ["CMD", "arangosh", "--server.endpoint", "tcp://127.0.0.1:8529", "--server.username", "root", "--server.password", "${ARANGO_PASSWORD:-123456}", "--javascript.execute-string", "db._version()"]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 20s
+      retries: 15
+      start_period: 40s
     restart: unless-stopped
 
   # ── ArangoDB Foxx Init (runs every compose up) ──────────────

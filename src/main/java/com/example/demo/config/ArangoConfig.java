@@ -84,13 +84,19 @@ public class ArangoConfig {
         String[] cols = {"users", "movies", "rooms", "seats", "screenings", "bookings", "audit_logs"};
         for (String col : cols) {
             if (!db.collection(col).exists()) {
-                db.createCollection(col, new CollectionCreateOptions().type(CollectionType.DOCUMENT));
+                db.createCollection(col, new CollectionCreateOptions()
+                    .type(CollectionType.DOCUMENT)
+                    .replicationFactor(2)
+                    .numberOfShards(3));
                 log.info("Đã tạo collection: {}", col);
             }
         }
 
         if (!db.collection("booking_seats").exists()) {
-            db.createCollection("booking_seats", new CollectionCreateOptions().type(CollectionType.EDGES));
+            db.createCollection("booking_seats", new CollectionCreateOptions()
+                .type(CollectionType.EDGES)
+                .replicationFactor(2)
+                .numberOfShards(3));
             log.info("Đã tạo edge collection: booking_seats");
         }
         }
@@ -155,7 +161,10 @@ public class ArangoConfig {
         db.createGraph(
             graphName,
             java.util.List.of(new EdgeDefinition().collection("booking_seats").from("bookings").to("seats")),
-            new GraphCreateOptions().orphanCollections("users", "movies", "rooms", "screenings", "audit_logs")
+            new GraphCreateOptions()
+                .orphanCollections("users", "movies", "rooms", "screenings", "audit_logs")
+                .replicationFactor(2)
+                .numberOfShards(3)
         );
         log.info("Đã tạo graph: {}", graphName);
     }
