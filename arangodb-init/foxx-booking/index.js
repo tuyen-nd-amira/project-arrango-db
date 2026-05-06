@@ -2,6 +2,7 @@
 
 const db = require('@arangodb').db;
 const createRouter = require('@arangodb/foxx/router');
+const joi = require('joi');
 
 const router = createRouter();
 module.context.use(router);
@@ -287,10 +288,26 @@ router.post('/complete-payment', function (req, res) {
           { fromId: booking._id }
         );
 
-        db._query(
-          'FOR u IN users FILTER u._key == @uid UPDATE u WITH { totalSpent: TO_NUMBER(u.totalSpent) + @amount } IN users',
+        const updatedUser = db._query(
+          'FOR u IN users FILTER u._key == @uid UPDATE u WITH { totalSpent: TO_NUMBER(u.totalSpent) + @amount } IN users RETURN NEW',
           { uid: params.userId, amount: Number(booking.total_amount || 0) }
-        );
+        ).toArray()[0];
+
+        // Trigger tự động cập nhật hạng thành viên
+        if (updatedUser && updatedUser.role !== 'admin') {
+          let newRole = 'normal';
+          if (updatedUser.totalSpent >= 10000000) {
+            newRole = 'premium';
+          } else if (updatedUser.totalSpent >= 5000000) {
+            newRole = 'vip';
+          }
+          if (updatedUser.role !== newRole) {
+            db._query(
+              'FOR u IN users FILTER u._key == @uid UPDATE u WITH { role: @newRole } IN users',
+              { uid: params.userId, newRole: newRole }
+            );
+          }
+        }
 
         db.audit_logs.save({
           action: 'complete_payment',
@@ -437,3 +454,74 @@ router.post('/cancel-holding', function (req, res) {
 })
 .body(['application/json'], 'Cancel holding payload')
 .response(['application/json'], 'Cancel result');
+
+// -------------------------------------------------------------
+// PROCEDURE: System Overview
+// -------------------------------------------------------------
+router.get('/reports/overview', function (req, res) {
+  const data = db._query(`
+    LET totalRevenue = (FOR b IN bookings FILTER b.status == 'confirmed' COLLECT AGGREGATE s = SUM(b.total_amount) RETURN s)[0]
+    LET totalTickets = (FOR b IN bookings FILTER b.status == 'confirmed' COLLECT AGGREGATE s = SUM(LENGTH(b.seat_keys)) RETURN s)[0]
+    LET totalBookings = (FOR b IN bookings FILTER b.status == 'confirmed' COLLECT WITH COUNT INTO c RETURN c)[0]
+    LET totalUsers = (FOR u IN users COLLECT WITH COUNT INTO c RETURN c)[0]
+    RETURN {
+      totalRevenue: totalRevenue != null ? totalRevenue : 0,
+      totalTickets: totalTickets != null ? totalTickets : 0,
+      totalBookings: totalBookings != null ? totalBookings : 0,
+      totalUsers: totalUsers != null ? totalUsers : 0
+    }
+  `).toArray()[0] || {};
+  res.send(data);
+})
+.response(['application/json'], 'System Overview');
+
+// -------------------------------------------------------------
+// PROCEDURE: Movie Revenue Reports
+// -------------------------------------------------------------
+router.get('/reports/movies', function (req, res) {
+  const data = db._query(`
+    FOR m IN movies
+      FILTER m.status == null OR m.status IN ['active', 'showing', 'coming_soon']
+      LET revenueStats = (FOR b IN bookings FILTER b.movie_key == m._key AND b.status == 'confirmed' COLLECT AGGREGATE totalRev = SUM(b.total_amount), totalTkts = SUM(LENGTH(b.seat_keys)) RETURN { totalRevenue: totalRev, totalTickets: totalTkts })[0]
+      LET stats = { totalRevenue: revenueStats != null && revenueStats.totalRevenue != null ? revenueStats.totalRevenue : 0, totalTickets: revenueStats != null && revenueStats.totalTickets != null ? revenueStats.totalTickets : 0 }
+      LET totalBookings = (
+        FOR b IN bookings
+        FILTER b.movie_key == m._key AND b.status == 'confirmed'
+        COLLECT WITH COUNT INTO c RETURN c
+      )[0]
+      SORT stats.totalRevenue DESC
+      RETURN {
+        movieId: m._key,
+        movieTitle: m.title,
+        totalRevenue: stats.totalRevenue,
+        totalTickets: stats.totalTickets,
+        totalBookings: totalBookings
+      }
+  `).toArray();
+  res.send(data);
+})
+.response(['application/json'], 'Movie Revenue Stats');
+
+router.get('/reports/movies/:movieId', function (req, res) {
+  const movieId = req.pathParams.movieId;
+  const data = db._query(`
+    LET movie = DOCUMENT('movies', @mid)
+    LET revenueStats = (FOR b IN bookings FILTER b.movie_key == @mid AND b.status == 'confirmed' COLLECT AGGREGATE totalRev = SUM(b.total_amount), totalTkts = SUM(LENGTH(b.seat_keys)) RETURN { totalRevenue: totalRev, totalTickets: totalTkts })[0]
+    LET stats = { totalRevenue: revenueStats != null && revenueStats.totalRevenue != null ? revenueStats.totalRevenue : 0, totalTickets: revenueStats != null && revenueStats.totalTickets != null ? revenueStats.totalTickets : 0 }
+    LET totalBookings = (
+      FOR b IN bookings
+      FILTER b.movie_key == @mid AND b.status == 'confirmed'
+      COLLECT WITH COUNT INTO c RETURN c
+    )[0]
+    RETURN {
+      movieId: @mid,
+      movieTitle: movie == null ? '' : movie.title,
+      totalRevenue: stats.totalRevenue,
+      totalTickets: stats.totalTickets,
+      totalBookings: totalBookings
+    }
+  `, { mid: movieId }).toArray()[0] || {};
+  res.send(data);
+})
+.pathParam('movieId', joi.string().required(), 'Movie ID')
+.response(['application/json'], 'Single Movie Revenue Stats');

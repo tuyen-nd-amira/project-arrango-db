@@ -115,7 +115,6 @@ public class BookingService {
                 throw new RuntimeException("Kết quả transaction không hợp lệ");
             }
 
-            userService.updateMemberRankTrigger(userId);
             User updatedUser = userRepository.findByKey(userId);
             return new BookingResponse(txResult.booking, updatedUser, "Thanh toán thành công! Đặt vé đã được xác nhận.");
         } catch (Exception e) {
@@ -163,6 +162,20 @@ public class BookingService {
         }
 
         throw new RuntimeException("Foxx service error (" + statusCode + "): " + extractFoxxErrorMessage(response.body()));
+    }
+
+    public String callFoxxGet(String path) throws Exception {
+        String endpoint = buildFoxxEndpoint(path);
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(endpoint))
+                .header("Authorization", buildBasicAuthHeader())
+                .GET()
+                .build();
+        HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() >= 200 && response.statusCode() < 300) {
+            return response.body();
+        }
+        throw new RuntimeException("Foxx GET error (" + response.statusCode() + "): " + extractFoxxErrorMessage(response.body()));
     }
 
     private String buildFoxxEndpoint(String path) {

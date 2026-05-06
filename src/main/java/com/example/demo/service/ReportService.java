@@ -7,7 +7,8 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
 import com.example.demo.dto.MovieReport;
-import com.example.demo.repository.BookingRepository;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,42 +18,42 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class ReportService {
 
-    private final BookingRepository bookingRepository;
+    private final BookingService bookingService;
+    private final ObjectMapper objectMapper;
 
-    /**
-     * PROCEDURE SIMULATION – Báo cáo doanh thu và số vé theo từng phim.
-     *
-     * ============================================================
-     * Đây mô phỏng Stored Procedure trong ArangoDB.
-     *
-     * ArangoDB hỗ trợ "stored procedure" qua hai cơ chế:
-     *   1. AQL User-Defined Functions (UDFs): hàm JS đăng ký server-side,
-     *      gọi được từ AQL (xem ArangoConfig.registerStoredProcedures).
-     *      Ví dụ: FOR m IN movies RETURN CINEMA::SP_MOVIE_STATS(m._key)
-     *
-     *   2. Encapsulated AQL complex queries (cách này):
-     *      Đóng gói câu truy vấn phức tạp trong một method Java tái sử dụng,
-     *      tương đương CREATE PROCEDURE trong SQL.
-     *
-     * Câu AQL dưới đây dùng COLLECT AGGREGATE – tương đương
-     * GROUP BY + SUM + COUNT trong SQL.
-     * ============================================================
-     */
     public List<MovieReport> getMovieRevenueReport() {
-        log.info("[PROCEDURE] SP_MOVIE_REVENUE_REPORT – Tính doanh thu theo phim");
-        List<Map<String, Object>> raw = bookingRepository.getRevenueByMovie();
-        return raw.stream().map(this::mapToMovieReport).collect(Collectors.toList());
+        log.info("[FOXX PROCEDURE] Gọi GET /reports/movies từ Foxx Service");
+        try {
+            String json = bookingService.callFoxxGet("/reports/movies");
+            List<Map<String, Object>> raw = objectMapper.readValue(json, new TypeReference<List<Map<String, Object>>>() {});
+            return raw.stream().map(this::mapToMovieReport).collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Lỗi khi lấy báo cáo phim từ Foxx", e);
+            throw new RuntimeException("Lỗi Foxx: " + e.getMessage());
+        }
     }
 
     public MovieReport getMovieReportById(String movieId) {
-        log.info("[PROCEDURE] SP_MOVIE_STATS({}) – Tính doanh thu phim", movieId);
-        Map<String, Object> raw = bookingRepository.getRevenueByMovieId(movieId);
-        return mapToMovieReport(raw);
+        log.info("[FOXX PROCEDURE] Gọi GET /reports/movies/{} từ Foxx Service", movieId);
+        try {
+            String json = bookingService.callFoxxGet("/reports/movies/" + movieId);
+            Map<String, Object> raw = objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
+            return mapToMovieReport(raw);
+        } catch (Exception e) {
+            log.error("Lỗi khi lấy báo cáo phim {} từ Foxx", movieId, e);
+            throw new RuntimeException("Lỗi Foxx: " + e.getMessage());
+        }
     }
 
     public Map<String, Object> getSystemOverview() {
-        log.info("[PROCEDURE] SP_SYSTEM_OVERVIEW – Tổng quan hệ thống");
-        return bookingRepository.getSystemOverview();
+        log.info("[FOXX PROCEDURE] Gọi GET /reports/overview từ Foxx Service");
+        try {
+            String json = bookingService.callFoxxGet("/reports/overview");
+            return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
+        } catch (Exception e) {
+            log.error("Lỗi khi lấy tổng quan hệ thống từ Foxx", e);
+            throw new RuntimeException("Lỗi Foxx: " + e.getMessage());
+        }
     }
 
     private MovieReport mapToMovieReport(Map<String, Object> raw) {
