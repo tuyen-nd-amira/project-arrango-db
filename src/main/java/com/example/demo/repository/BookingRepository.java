@@ -143,12 +143,13 @@ public class BookingRepository {
         String aql =
             "FOR m IN movies " +
             "FILTER m.status == null OR m.status IN ['active', 'showing', 'coming_soon'] " +
-            "LET stats = CINEMA::SP_MOVIE_STATS(m._key) " +
-            "LET totalBookings = LENGTH(" +
+            "LET revenueStats = (FOR b IN bookings FILTER b.movie_key == m._key AND b.status == 'confirmed' COLLECT AGGREGATE totalRev = SUM(b.total_amount), totalTkts = SUM(LENGTH(b.seat_keys)) RETURN { totalRevenue: totalRev, totalTickets: totalTkts })[0] " +
+            "LET stats = { totalRevenue: revenueStats != null && revenueStats.totalRevenue != null ? revenueStats.totalRevenue : 0, totalTickets: revenueStats != null && revenueStats.totalTickets != null ? revenueStats.totalTickets : 0 } " +
+            "LET totalBookings = (" +
             "  FOR b IN bookings " +
             "  FILTER b.movie_key == m._key AND b.status == 'confirmed' " +
-            "  RETURN 1" +
-            ") " +
+            "  COLLECT WITH COUNT INTO c RETURN c" +
+            ")[0] " +
             "SORT stats.totalRevenue DESC " +
             "RETURN { " +
             "  movieId: m._key, " +
@@ -167,12 +168,13 @@ public class BookingRepository {
     public Map<String, Object> getRevenueByMovieId(String movieId) {
         String aql =
             "LET movie = DOCUMENT('movies', @mid) " +
-            "LET stats = CINEMA::SP_MOVIE_STATS(@mid) " +
-            "LET totalBookings = LENGTH(" +
+            "LET revenueStats = (FOR b IN bookings FILTER b.movie_key == @mid AND b.status == 'confirmed' COLLECT AGGREGATE totalRev = SUM(b.total_amount), totalTkts = SUM(LENGTH(b.seat_keys)) RETURN { totalRevenue: totalRev, totalTickets: totalTkts })[0] " +
+            "LET stats = { totalRevenue: revenueStats != null && revenueStats.totalRevenue != null ? revenueStats.totalRevenue : 0, totalTickets: revenueStats != null && revenueStats.totalTickets != null ? revenueStats.totalTickets : 0 } " +
+            "LET totalBookings = (" +
             "  FOR b IN bookings " +
             "  FILTER b.movie_key == @mid AND b.status == 'confirmed' " +
-            "  RETURN 1" +
-            ") " +
+            "  COLLECT WITH COUNT INTO c RETURN c" +
+            ")[0] " +
             "RETURN { " +
             "  movieId: @mid, " +
             "  movieTitle: movie == null ? '' : movie.title, " +
@@ -191,7 +193,17 @@ public class BookingRepository {
 
     // ---- Tổng quan hệ thống (Stored Procedure: CINEMA::SP_SYSTEM_OVERVIEW) ----
     public Map<String, Object> getSystemOverview() {
-        String aql = "RETURN CINEMA::SP_SYSTEM_OVERVIEW()";
+        String aql = 
+            "LET totalRevenue = (FOR b IN bookings FILTER b.status == 'confirmed' COLLECT AGGREGATE s = SUM(b.total_amount) RETURN s)[0] " +
+            "LET totalTickets = (FOR b IN bookings FILTER b.status == 'confirmed' COLLECT AGGREGATE s = SUM(LENGTH(b.seat_keys)) RETURN s)[0] " +
+            "LET totalBookings = (FOR b IN bookings FILTER b.status == 'confirmed' COLLECT WITH COUNT INTO c RETURN c)[0] " +
+            "LET totalUsers = (FOR u IN users COLLECT WITH COUNT INTO c RETURN c)[0] " +
+            "RETURN { " +
+            "  totalRevenue: totalRevenue != null ? totalRevenue : 0, " +
+            "  totalTickets: totalTickets != null ? totalTickets : 0, " +
+            "  totalBookings: totalBookings != null ? totalBookings : 0, " +
+            "  totalUsers: totalUsers != null ? totalUsers : 0 " +
+            "}";
         ArangoCursor<SystemOverview> cursor = db.query(aql, null, null, SystemOverview.class);
         if (!cursor.hasNext()) {
             return new HashMap<>();

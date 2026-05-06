@@ -25,7 +25,7 @@ services:
       start_period: 40s
     restart: unless-stopped
 
-  # ── ArangoDB Foxx Init (runs every compose up) ──────────────
+  # ── ArangoDB Foxx Init (khởi tạo mỗi khi chạy compose up) ──────────────
   arangodb_init:
     image: arangodb:3.12
     container_name: cinema_arangodb_init

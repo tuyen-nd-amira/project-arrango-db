@@ -104,11 +104,11 @@ public class ArangoConfig {
         private void initIndexes(ArangoDatabase db) {
         db.collection("users").ensureHashIndex(
             java.util.List.of("email"),
-            new HashIndexOptions().unique(true)
+            new HashIndexOptions().unique(false)
         );
         db.collection("users").ensureHashIndex(
             java.util.List.of("username"),
-            new HashIndexOptions().unique(true)
+            new HashIndexOptions().unique(false)
         );
 
         db.collection("movies").ensureHashIndex(
@@ -118,7 +118,7 @@ public class ArangoConfig {
 
         db.collection("seats").ensurePersistentIndex(
             java.util.List.of("room_key", "seat_row", "seat_number"),
-            new PersistentIndexOptions().unique(true)
+            new PersistentIndexOptions().unique(false)
         );
 
         db.collection("screenings").ensurePersistentIndex(
@@ -128,7 +128,7 @@ public class ArangoConfig {
 
         db.collection("bookings").ensurePersistentIndex(
             java.util.List.of("booking_code"),
-            new PersistentIndexOptions().unique(true)
+            new PersistentIndexOptions().unique(false)
         );
         db.collection("bookings").ensureHashIndex(
             java.util.List.of("user_key"),
@@ -146,7 +146,7 @@ public class ArangoConfig {
         // Tránh đặt trùng ghế trong cùng 1 suất chiếu.
         db.collection("booking_seats").ensurePersistentIndex(
             java.util.List.of("_to", "screening_key"),
-            new PersistentIndexOptions().unique(true)
+            new PersistentIndexOptions().unique(false)
         );
         }
 

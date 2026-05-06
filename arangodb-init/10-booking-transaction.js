@@ -3,9 +3,9 @@
 const db = require('@arangodb').db;
 const internal = require('internal');
 const aqlFunctions = require('@arangodb/aql/functions');
-
 const targetDatabase = internal.env.ARANGO_DATABASE || 'cinema_db';
 
+// Hàm tạo database cinema_db nếu chưa tồn tại
 function ensureDatabase(name) {
   db._useDatabase('_system');
   if (name !== '_system' && !db._databases().includes(name)) {
@@ -15,24 +15,28 @@ function ensureDatabase(name) {
   db._useDatabase(name);
 }
 
+// Hàm transaction để đặt vé
 function registerBookingTransactionProcedure() {
   const functionName = 'CINEMA::TX_CREATE_BOOKING';
   const functionBody = `function(payload) {
     var db = require('@arangodb').db;
 
+    // Kiểm tra điều kiện cho payload
     if (!payload || !payload.userId || !payload.screeningId || !payload.seatKeys || payload.seatKeys.length === 0) {
-      throw new Error('Payload dat ve khong hop le');
+      throw new Error('Dữ liệu đặt vé không hợp lệ');
     }
 
+    // Kiểm tra ghế bị trùng (Nhận giá trị seatKeys là một mảng)
     var seatKeySet = {};
     for (var i = 0; i < payload.seatKeys.length; i++) {
       var key = payload.seatKeys[i];
       if (seatKeySet[key]) {
-        throw new Error('Danh sach ghe bi trung: ' + key);
+        throw new Error('Danh sách các ghế bị trùng: ' + key);
       }
       seatKeySet[key] = true;
     }
 
+    // Gọi transaction
     return db._executeTransaction({
       collections: {
         read: ['screenings', 'movies', 'rooms', 'seats', 'users', 'booking_seats'],
@@ -42,16 +46,18 @@ function registerBookingTransactionProcedure() {
       action: function(params) {
         var db = require('@arangodb').db;
 
+        // Kiểm tra suất chiếu
         var screening;
         try {
           screening = db.screenings.document(params.screeningId);
         } catch (e) {
-          throw new Error('Suat chieu khong ton tai');
+          throw new Error('Suất chiếu không tồn tại!');
         }
         if (!screening || screening.status !== 'active') {
-          throw new Error('Suat chieu da ket thuc hoac bi huy');
+          throw new Error('Suất chiếu đã kết thúc hoặc bị hủy!');
         }
 
+        // Lấy thông tin phim
         var movie = null;
         if (screening.movie_key) {
           try {
@@ -61,6 +67,7 @@ function registerBookingTransactionProcedure() {
           }
         }
 
+        // Lấy thông tin phòng chiếu
         var room = null;
         if (screening.room_key) {
           try {
@@ -70,6 +77,7 @@ function registerBookingTransactionProcedure() {
           }
         }
 
+        // Lấy danh sách ghế
         var selectedSeats = [];
         for (var i = 0; i < params.seatKeys.length; i++) {
           var seatKey = params.seatKeys[i];
@@ -78,13 +86,15 @@ function registerBookingTransactionProcedure() {
           try {
             seat = db.seats.document(seatKey);
           } catch (e) {
-            throw new Error('Ghe khong ton tai: ' + seatKey);
+            throw new Error('Ghế không tồn tại: ' + seatKey);
           }
 
+          // Kiểm tra ghế có thuộc phòng chiếu của suất này không
           if (seat.room_key !== screening.room_key) {
-            throw new Error('Ghe khong thuoc phong chieu cua suat nay: ' + seatKey);
+            throw new Error('Ghế không thuộc phòng chiếu của suất này: ' + seatKey);
           }
 
+          // Xử lý ghế bị hết hạn
           var expiredEdges = db._query(
             'FOR e IN booking_seats ' +
             'FILTER e._to == @seatId AND e.screening_key == @sid AND e.booking_status == "holding" ' +
@@ -92,6 +102,8 @@ function registerBookingTransactionProcedure() {
             'RETURN { edgeKey: e._key, bookingKey: PARSE_IDENTIFIER(e._from).key }',
             { seatId: seat._id, sid: params.screeningId }
           ).toArray();
+
+          // Xử lý ghế bị hết hạn
           for (var x = 0; x < expiredEdges.length; x++) {
             var item = expiredEdges[x];
             db.booking_seats.remove(item.edgeKey);
@@ -102,6 +114,7 @@ function registerBookingTransactionProcedure() {
             );
           }
 
+          // Kiểm tra ghế đã được đặt chưa
           var occupied = db._query(
             'FOR e IN booking_seats FILTER e._to == @seatId AND e.screening_key == @sid AND (' +
             '  e.booking_status == "confirmed" OR ' +
@@ -111,24 +124,33 @@ function registerBookingTransactionProcedure() {
           ).toArray().length > 0;
 
           if (occupied) {
-            throw new Error('Ghe ' + seat.seat_label + ' da co nguoi dat');
+            throw new Error('Ghế ' + seat.seat_label + ' đã có người đặt');
           }
 
           selectedSeats.push(seat);
         }
 
+        // Lấy thông tin người dùng
         var user;
         try {
           user = db.users.document(params.userId);
         } catch (e) {
-          throw new Error('Nguoi dung khong ton tai');
+          throw new Error('Người dùng không tồn tại');
         }
 
+        // Tính tổng tiền
         var totalAmount = Number(screening.price || 0) * selectedSeats.length;
+
+        // Tạo mã đặt vé
         var bookingCode = params.bookingCode || ('BK' + Date.now());
+
+        // Tạo thời gian tạo
         var createdAt = params.createdAt || new Date().toISOString();
+
+        // Tạo thời gian hết hạn hold
         var holdExpiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
+        // Tạo tài liệu đặt vé
         var bookingDoc = {
           booking_code: bookingCode,
           user_key: params.userId,
@@ -147,6 +169,7 @@ function registerBookingTransactionProcedure() {
 
         var bookingMeta = db.bookings.save(bookingDoc);
 
+        // Tạo các cạnh booking_seats cho mỗi ghế
         for (var j = 0; j < params.seatKeys.length; j++) {
           db.booking_seats.save({
             _from: 'bookings/' + bookingMeta._key,
@@ -158,6 +181,7 @@ function registerBookingTransactionProcedure() {
           });
         }
 
+        // Tạo tài liệu nhật ký kiểm tra
         db.audit_logs.save({
           action: 'create_booking',
           entity_key: bookingMeta._key,
