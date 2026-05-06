@@ -235,6 +235,7 @@ function getNavbarHTML(activePage = '') {
       <div class="d-flex align-items-center gap-1 flex-wrap">
         <a href="/"            class="nav-link-custom ${activePage==='home'?'active':''}">Trang chủ</a>
         <a href="/movies.html"  class="nav-link-custom ${activePage==='movies'?'active':''}">Danh sách phim</a>
+        <a href="/history.html" class="nav-link-custom ${activePage==='history'?'active':''}">Lịch sử mua vé</a>
         <a href="/report.html"  class="nav-link-custom ${activePage==='report'?'active':''}">📊 Báo cáo</a>
       </div>
       <div class="d-flex align-items-center" id="nav-user"></div>

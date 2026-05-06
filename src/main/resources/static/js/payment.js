@@ -45,6 +45,45 @@ function escapeHtml(input) {
 function renderHolding(booking) {
   holdExpiresAt = booking.holdExpiresAt || null;
 
+  const user = getCurrentUser();
+  let originalAmount = booking.totalAmount || 0;
+  let discountAmount = 0;
+  
+  if (user && user.role === 'premium') {
+    originalAmount = originalAmount / 0.90;
+    discountAmount = originalAmount - booking.totalAmount;
+  } else if (user && user.role === 'vip') {
+    originalAmount = originalAmount / 0.95;
+    discountAmount = originalAmount - booking.totalAmount;
+  }
+
+  let priceHtml = '';
+  if (discountAmount > 0) {
+    const discountText = user.role === 'premium' ? 'Premium (-10%)' : 'VIP (-5%)';
+    priceHtml = `
+      <div class="d-flex justify-content-between mb-2">
+        <span style="color:#666">Tổng tiền ban đầu</span>
+        <span class="fw-bold text-decoration-line-through" style="color:#666">${formatVND(originalAmount)}</span>
+      </div>
+      <div class="d-flex justify-content-between mb-2">
+        <span style="color:#2ecc71">Khuyến mãi ${discountText}</span>
+        <span class="fw-bold" style="color:#2ecc71">- ${formatVND(discountAmount)}</span>
+      </div>
+      <hr class="my-2" style="border-color:#fca5a5">
+      <div class="d-flex justify-content-between align-items-center">
+        <span class="fw-bold" style="color:#222">Tổng tiền thanh toán</span>
+        <span class="fw-bold" style="color:#e50914;font-size:1.3rem">${formatVND(booking.totalAmount || 0)}</span>
+      </div>
+    `;
+  } else {
+    priceHtml = `
+      <div class="d-flex justify-content-between align-items-center">
+        <span class="fw-bold" style="color:#222">Tổng tiền thanh toán</span>
+        <span class="fw-bold" style="color:#e50914;font-size:1.3rem">${formatVND(booking.totalAmount || 0)}</span>
+      </div>
+    `;
+  }
+
   paymentBox.innerHTML = `
     <h4 class="fw-bold mb-4">💳 Thanh toán đặt vé</h4>
 
@@ -68,9 +107,8 @@ function renderHolding(booking) {
       <div class="fw-bold">${(booking.seatLabels || []).map(escapeHtml).join(', ')}</div>
     </div>
 
-    <div class="d-flex justify-content-between align-items-center p-3 mb-3" style="border:1px solid #e50914;border-radius:10px;background:#fff5f5">
-      <span class="fw-bold" style="color:#222">Tổng tiền</span>
-      <span class="fw-bold" style="color:#e50914;font-size:1.2rem">${formatVND(booking.totalAmount || 0)}</span>
+    <div class="p-3 mb-3" style="border:1px solid #e50914;border-radius:10px;background:#fff5f5">
+      ${priceHtml}
     </div>
 
     <div class="p-3 mb-4" style="border:1px solid #9a3412;border-radius:10px;background:#2b140f">

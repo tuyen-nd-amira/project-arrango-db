@@ -113,13 +113,21 @@ router.post('/create-booking', function (req, res) {
           selectedSeats.push(seat);
         }
 
+        let user;
         try {
-          db.users.document(params.userId);
+          user = db.users.document(params.userId);
         } catch (e) {
           throw new Error('Nguoi dung khong ton tai');
         }
 
-        const totalAmount = Number(screening.price || 0) * selectedSeats.length;
+        let totalAmount = Number(screening.price || 0) * selectedSeats.length;
+        
+        // Cập nhật Trigger tự động giảm giá
+        if (user.role === 'premium') {
+          totalAmount = totalAmount * 0.90; // Giảm 10%
+        } else if (user.role === 'vip') {
+          totalAmount = totalAmount * 0.95; // Giảm 5%
+        }
         const bookingCode = params.bookingCode || ('BK' + Date.now());
         const createdAt = params.createdAt || new Date().toISOString();
         const holdExpiresAt = new Date(Date.now() + HOLD_MINUTES * 60 * 1000).toISOString();

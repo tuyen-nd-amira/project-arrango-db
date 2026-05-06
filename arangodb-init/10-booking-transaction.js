@@ -138,8 +138,13 @@ function registerBookingTransactionProcedure() {
           throw new Error('Người dùng không tồn tại');
         }
 
-        // Tính tổng tiền
+        // Tính tổng tiền và áp dụng Trigger tự động giảm giá
         var totalAmount = Number(screening.price || 0) * selectedSeats.length;
+        if (user.role === 'premium') {
+          totalAmount = totalAmount * 0.90; // Giảm 10% cho Premium
+        } else if (user.role === 'vip') {
+          totalAmount = totalAmount * 0.95; // Giảm 5% cho VIP
+        }
 
         // Tạo mã đặt vé
         var bookingCode = params.bookingCode || ('BK' + Date.now());
